@@ -36,7 +36,7 @@ static size_t used_memory = 0;
 void *zmalloc(size_t size) {
     void *ptr = malloc(size+sizeof(size_t));
 
-    *((size_t*)ptr) = size;  //强制转换成size_t* 类型指针，然后把申请的长度存储进去，这也是为什么malloc(size+sizeof(size_t))中加入sizeof(size_t)这个长度
+    *((size_t*)ptr) = size;  
     used_memory += size+sizeof(size_t);
     return (char*)ptr+sizeof(size_t);
 }
