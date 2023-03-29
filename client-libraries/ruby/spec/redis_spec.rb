@@ -13,8 +13,8 @@ end
 
 describe "redis" do
   before(:all) do
-    @r = Redis.new
-    @r.select_db(15) # use database 15 for testing so we dont accidentally step on you real data
+    # use database 15 for testing so we dont accidentally step on you real data
+    @r = Redis.new :db => 15
   end
 
   before(:each) do
@@ -29,6 +29,9 @@ describe "redis" do
     @r.quit
   end  
 
+  it 'should be able to PING' do
+    @r.ping.should == true
+  end
 
   it "should be able to GET a key" do
     @r['foo'].should == 'bar'
@@ -37,6 +40,19 @@ describe "redis" do
   it "should be able to SET a key" do
     @r['foo'] = 'nik'
     @r['foo'].should == 'nik'
+  end
+  
+  it "should properly handle trailing newline characters" do
+    @r['foo'] = "bar\n"
+    @r['foo'].should == "bar\n"
+  end
+  
+  it "should store and retrieve all possible characters at the beginning and the end of a string" do
+    (0..255).each do |char_idx|
+      string = "#{char_idx.chr}---#{char_idx.chr}"
+      @r['foo'] = string
+      @r['foo'].should == string
+    end
   end
   
   it "should be able to SET a key with an expiry" do
@@ -89,7 +105,16 @@ describe "redis" do
     lambda {@r.rename 'foo', 'bar'}.should raise_error(RedisRenameError)
     @r['bar'].should == 'ohai'
   end
-  # 
+  #
+  it "should be able to get DBSIZE of the database" do
+    @r.delete 'foo'
+    dbsize_without_foo = @r.dbsize
+    @r['foo'] = 0
+    dbsize_with_foo = @r.dbsize
+
+    dbsize_with_foo.should == dbsize_without_foo + 1
+  end
+  #
   it "should be able to EXPIRE a key" do
     @r['foo'] = 'bar'
     @r.expire('foo', 1)
@@ -271,11 +296,63 @@ describe "redis" do
     @r.set_add "set", 'key1'
     @r.set_add "set", 'key2'
     @r.set_add "set2", 'key2'
-    @r.set_inter_store('newone', 'set', 'set2')
+    @r.set_inter_store('newone', 'set', 'set2').should == 'OK'
     @r.set_members('newone').should == Set.new(['key2'])
     @r.delete('set')
+    @r.delete('set2')
+  end
+  #
+  it "should be able to do set union" do
+    @r.set_add "set", 'key1'
+    @r.set_add "set", 'key2'
+    @r.set_add "set2", 'key2'
+    @r.set_add "set2", 'key3'
+    @r.set_union('set', 'set2').should == Set.new(['key1','key2','key3'])
+    @r.delete('set')
+    @r.delete('set2')
   end
   # 
+  it "should be able to do set union and store the results in a key" do
+    @r.set_add "set", 'key1'
+    @r.set_add "set", 'key2'
+    @r.set_add "set2", 'key2'
+    @r.set_add "set2", 'key3'
+    @r.set_union_store('newone', 'set', 'set2').should == 'OK'
+    @r.set_members('newone').should == Set.new(['key1','key2','key3'])
+    @r.delete('set')
+    @r.delete('set2')
+  end
+  # 
+  it "should be able to do set difference" do
+     @r.set_add "set", 'a'
+     @r.set_add "set", 'b'
+     @r.set_add "set2", 'b'
+     @r.set_add "set2", 'c'
+     @r.set_diff('set', 'set2').should == Set.new(['a'])
+     @r.delete('set')
+     @r.delete('set2')
+   end
+  # 
+  it "should be able to do set difference and store the results in a key" do
+     @r.set_add "set", 'a'
+     @r.set_add "set", 'b'
+     @r.set_add "set2", 'b'
+     @r.set_add "set2", 'c'
+     @r.set_diff_store('newone', 'set', 'set2')
+     @r.set_members('newone').should == Set.new(['a'])
+     @r.delete('set')
+     @r.delete('set2')
+   end
+  # 
+  it "should be able move elements from one set to another" do
+    @r.set_add 'set1', 'a'
+    @r.set_add 'set1', 'b'
+    @r.set_add 'set2', 'x'
+    @r.set_move('set1', 'set2', 'a').should == true
+    @r.set_member?('set2', 'a').should == true
+    @r.delete('set1')
+  end
+  #
   it "should be able to do crazy SORT queries" do
     @r['dog_1'] = 'louie'
     @r.push_tail 'dogs', 1
@@ -287,6 +364,23 @@ describe "redis" do
     @r.push_tail 'dogs', 4
     @r.sort('dogs', :get => 'dog_*', :limit => [0,1]).should == ['louie']
     @r.sort('dogs', :get => 'dog_*', :limit => [0,1], :order => 'desc alpha').should == ['taj']
+  end
+
+  it "should be able to handle array of :get using SORT" do
+    @r['dog:1:name'] = 'louie'
+    @r['dog:1:breed'] = 'mutt'
+    @r.push_tail 'dogs', 1
+    @r['dog:2:name'] = 'lucy'
+    @r['dog:2:breed'] = 'poodle'
+    @r.push_tail 'dogs', 2
+    @r['dog:3:name'] = 'max'
+    @r['dog:3:breed'] = 'hound'
+    @r.push_tail 'dogs', 3
+    @r['dog:4:name'] = 'taj'
+    @r['dog:4:breed'] = 'terrier'
+    @r.push_tail 'dogs', 4
+    @r.sort('dogs', :get => ['dog:*:name', 'dog:*:breed'], :limit => [0,1]).should == ['louie', 'mutt']
+    @r.sort('dogs', :get => ['dog:*:name', 'dog:*:breed'], :limit => [0,1], :order => 'desc alpha').should == ['taj', 'terrier']
   end
   # 
   it "should provide info" do
@@ -334,4 +428,18 @@ describe "redis" do
     end
   end
 
+  it "should be able to pipeline writes" do
+    @r.pipelined do |pipeline|
+      pipeline.push_head "list", "hello"
+      pipeline.push_head "list", 42
+    end
+    
+    @r.type?('list').should == "list"
+    @r.list_length('list').should == 2
+    @r.pop_head('list').should == '42'
+    @r.delete('list')
+  end
+  
+  it "should select db on connection"
+  it "should re-select db on reconnection"
 end
