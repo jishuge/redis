@@ -60,6 +60,7 @@ static struct redisFunctionSym symsTable[] = {
 {"getCommand",(unsigned long)getCommand},
 {"getDecodedObject",(unsigned long)getDecodedObject},
 {"getExpire",(unsigned long)getExpire},
+{"getGenericCommand",(unsigned long)getGenericCommand},
 {"getMcontextEip",(unsigned long)getMcontextEip},
 {"getsetCommand",(unsigned long)getsetCommand},
 {"glueReplyBuffersIfNeeded",(unsigned long)glueReplyBuffersIfNeeded},

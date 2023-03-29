@@ -1,14 +1,19 @@
-Welcome to Redis 1.1.95
+Welcome to Redis 1.2.0
 
-This is the 1.1.95-beta, also known as 1.2.0 release candidate 6.
+This is a rebranded 1.1.95-beta, also known as 1.2.0 release candidate 6
+because no critical bug was found in the latest weeks.
 
-This is a minor bugfix release compared to 1.1.94 (a minor GETSET bug was fixed)
-Unless major bugs are found, this is the latest release candidate.
+Redis 1.0 users are urged to upgrade as this release is backward compatibile
+with 1.0 (there are a few changes in some commands, but the new behavior is
+saner and you should notice it unless you are abusing the API really hard).
 
-1.2.0-stable will be relased in the first weeks of 2010 and will hopefully be
-an unmodified 1.1.95 with version changed to 1.2.0.
+Make sure to read the wiki page at
 
-WHAT'S NEW IN 1.1.x - 1.2.x:
+    http://code.google.com/p/redis/wiki/Redis_1_2_0_Changelog
+
+For an in-deepth review of what's new in Redis 1.2.
+
+WHAT'S NEW IN 1.2.x:
 
 2009-09-10 in-memory specialized object encoding. (antirez)
 2009-09-17 maxmemory fixed in 64 systems for values > 4GB. (antirez)
