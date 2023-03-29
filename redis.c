@@ -27,7 +27,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#define REDIS_VERSION "0.094"
+#define REDIS_VERSION "0.095"
 
 #include "fmacros.h"
 
@@ -1929,6 +1929,7 @@ static robj *rdbLoadLzfStringObject(FILE*fp, int rdbver) {
     if ((val = sdsnewlen(NULL,len)) == NULL) goto err;
     if (fread(c,clen,1,fp) == 0) goto err;
     if (lzf_decompress(c,clen,val,len) == 0) goto err;
+    zfree(c);
     return createObject(REDIS_STRING,val);
 err:
     zfree(c);
