@@ -1,13 +1,13 @@
 K 25
 svn:wc:ra_dav:version-url
-V 49
-/svn/!svn/ver/52/trunk/client-libraries/ruby/spec
+V 50
+/svn/!svn/ver/185/trunk/client-libraries/ruby/spec
 END
 redis_spec.rb
 K 25
 svn:wc:ra_dav:version-url
-V 63
-/svn/!svn/ver/52/trunk/client-libraries/ruby/spec/redis_spec.rb
+V 64
+/svn/!svn/ver/185/trunk/client-libraries/ruby/spec/redis_spec.rb
 END
 spec_helper.rb
 K 25

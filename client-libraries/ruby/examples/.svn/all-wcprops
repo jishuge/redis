@@ -1,0 +1,29 @@
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/185/trunk/client-libraries/ruby/examples
+END
+sets.rb
+K 25
+svn:wc:ra_dav:version-url
+V 62
+/svn/!svn/ver/185/trunk/client-libraries/ruby/examples/sets.rb
+END
+basic.rb
+K 25
+svn:wc:ra_dav:version-url
+V 63
+/svn/!svn/ver/185/trunk/client-libraries/ruby/examples/basic.rb
+END
+incr-decr.rb
+K 25
+svn:wc:ra_dav:version-url
+V 67
+/svn/!svn/ver/185/trunk/client-libraries/ruby/examples/incr-decr.rb
+END
+list.rb
+K 25
+svn:wc:ra_dav:version-url
+V 62
+/svn/!svn/ver/185/trunk/client-libraries/ruby/examples/list.rb
+END

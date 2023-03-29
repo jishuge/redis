@@ -1,20 +1,19 @@
-# Makefile for wbox
-# Copyright (C) 2007 Salvatore Sanfilippo <antirez@invece.org>
-# All Rights Reserved
-# Under the GPL license version 2
+# Redis Makefile
+# Copyright (C) 2009 Salvatore Sanfilippo <antirez at gmail dot com>
+# This file is released under the BSD license, see the COPYING file
 
 DEBUG?= -g
 CFLAGS?= -O2 -Wall -W -DSDS_ABORT_ON_OOM
 CCOPT= $(CFLAGS)
 
-OBJ = adlist.o ae.o anet.o dict.o redis.o sds.o picol.o
+OBJ = adlist.o ae.o anet.o dict.o redis.o sds.o
 BENCHOBJ = ae.o anet.o benchmark.o sds.o adlist.o
 PRGNAME = redis-server
+BENCHPRGNAME = redis-benchmark
 
 all: redis-server redis-benchmark
 
 # Deps (use make dep to generate this)
-picol.o: picol.c picol.h
 adlist.o: adlist.c adlist.h
 ae.o: ae.c ae.h
 anet.o: anet.c anet.h
@@ -31,13 +30,13 @@ redis-server: $(OBJ)
 	@echo ""
 
 redis-benchmark: $(BENCHOBJ)
-	$(CC) -o redis-benchmark $(CCOPT) $(DEBUG) $(BENCHOBJ)
+	$(CC) -o $(BENCHPRGNAME) $(CCOPT) $(DEBUG) $(BENCHOBJ)
 
 .c.o:
 	$(CC) -c $(CCOPT) $(DEBUG) $(COMPILE_TIME) $<
 
 clean:
-	rm -rf $(PRGNAME) *.o
+	rm -rf $(PRGNAME) $(BENCHPRGNAME) *.o
 
 dep:
 	$(CC) -MM *.c

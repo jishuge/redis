@@ -8,8 +8,8 @@ __author__ = "Ludovico Magnocavallo <ludo\x40qix\x2eit>"
 __copyright__ = "Copyright 2009, Ludovico Magnocavallo"
 __license__ = "MIT"
 __version__ = "0.5"
-__revision__ = "$LastChangedRevision: 68 $"[22:-2]
-__date__ = "$LastChangedDate: 2009-03-07 12:02:43 +0100 (Sab, 07 Mar 2009) $"[18:-2]
+__revision__ = "$LastChangedRevision: 175 $"[22:-2]
+__date__ = "$LastChangedDate: 2009-03-17 16:15:55 +0100 (Mar, 17 Mar 2009) $"[18:-2]
 
 
 # TODO: Redis._get_multi_response
@@ -228,6 +228,8 @@ class Redis(object):
     def keys(self, pattern):
         """
         >>> r = Redis()
+        >>> r.flush()
+        'OK'
         >>> r.set('a', 'a')
         'OK'
         >>> r.keys('a*')
@@ -362,17 +364,7 @@ class Redis(object):
         """
         self.connect()
         self._write('LRANGE %s %s %s\r\n' % (name, start, end))
-        results = list()
-        try:
-            num = self._get_numeric_response(allow_negative=False)
-        except InvalidResponse, e:
-            if e.args[1] == 'nil':
-                return results
-            raise
-        while num:
-            results.append(self._get_value())
-            num -= 1
-        return results
+        return self._get_multi_response()
         
     def ltrim(self, name, start, end):
         """
@@ -489,6 +481,104 @@ class Redis(object):
             raise InvalidData("Error encoding unicode value for element %s in list '%s': %s." % (index, name, e))
         return self._get_simple_response()
     
+    def lrem(self, name, value, num=0):
+        """
+        >>> r = Redis()
+        >>> r.delete('l')
+        1
+        >>> r.push('l', 'aaa')
+        'OK'
+        >>> r.push('l', 'bbb')
+        'OK'
+        >>> r.push('l', 'aaa')
+        'OK'
+        >>> r.lrem('l', 'aaa')
+        2
+        >>> r.lrange('l', 0, 10)
+        ['bbb']
+        >>> r.push('l', 'aaa')
+        'OK'
+        >>> r.push('l', 'aaa')
+        'OK'
+        >>> r.lrem('l', 'aaa', 1)
+        1
+        >>> r.lrem('l', 'aaa', 1)
+        1
+        >>> r.lrem('l', 'aaa', 1)
+        0
+        >>> 
+        """
+        self.connect()
+        try:
+            value = value if isinstance(value, basestring) else str(value)
+            self._write('LREM %s %s %s\r\n%s\r\n' % (
+                name, num, len(value), value
+            ))
+        except UnicodeEncodeError, e:
+            raise InvalidData("Error encoding unicode value for element %s in list '%s': %s." % (index, name, e))
+        return self._get_numeric_response()
+    
+    def sort(self, name, by=None, get=None, start=None, num=None, desc=False, alpha=False):
+        """
+        >>> r = Redis()
+        >>> r.delete('l')
+        1
+        >>> r.push('l', 'ccc')
+        'OK'
+        >>> r.push('l', 'aaa')
+        'OK'
+        >>> r.push('l', 'ddd')
+        'OK'
+        >>> r.push('l', 'bbb')
+        'OK'
+        >>> r.sort('l', alpha=True)
+        ['aaa', 'bbb', 'ccc', 'ddd']
+        >>> r.delete('l')
+        1
+        >>> for i in range(1, 5):
+        ...     res = r.push('l', 1.0 / i)
+        >>> r.sort('l')
+        ['0.25', '0.333333333333', '0.5', '1.0']
+        >>> r.sort('l', desc=True)
+        ['1.0', '0.5', '0.333333333333', '0.25']
+        >>> r.sort('l', desc=True, start=2, num=1)
+        ['0.333333333333']
+        >>> r.set('weight_0.5', 10)
+        'OK'
+        >>> r.sort('l', desc=True, by='weight_*')
+        ['0.5', '1.0', '0.333333333333', '0.25']
+        >>> for i in r.sort('l', desc=True):
+        ...     res = r.set('test_%s' % i, 100 - float(i))
+        >>> r.sort('l', desc=True, get='test_*')
+        ['99.0', '99.5', '99.6666666667', '99.75']
+        >>> r.sort('l', desc=True, by='weight_*', get='test_*')
+        ['99.5', '99.0', '99.6666666667', '99.75']
+        >>> r.sort('l', desc=True, by='weight_*', get='missing_*')
+        [None, None, None, None]
+        >>> 
+        """
+        stmt = ['SORT', name]
+        if by:
+            stmt.append("BY %s" % by)
+        if start and num:
+            stmt.append("LIMIT %s %s" % (start, num))
+        if get is None:
+            pass
+        elif isinstance(get, basestring):
+            stmt.append("GET %s" % get)
+        elif isinstance(get, list) or isinstance(get, tuple):
+            for g in get:
+                stmt.append("GET %s" % g)
+        else:
+            raise RedisError("Invalid parameter 'get' for Redis sort")
+        if desc:
+            stmt.append("DESC")
+        if alpha:
+            stmt.append("ALPHA")
+        self.connect()
+        self._write(' '.join(stmt + ["\r\n"]))
+        return self._get_multi_response()
+    
     def sadd(self, name, value):
         """
         >>> r = Redis()
@@ -585,24 +675,38 @@ class Redis(object):
         ...     print e
         Operation against a key holding the wrong kind of value
         >>> r.sinter('s1', 's2', 's3')
-        []
+        set([])
         >>> r.sinter('s1', 's2')
-        ['a']
+        set(['a'])
         >>> 
         """
         self.connect()
         self._write('SINTER %s\r\n' % ' '.join(args))
-        results = list()
-        try:
-            num = self._get_numeric_response(allow_negative=False)
-        except InvalidResponse, e:
-            if e.args[1] == 'nil':
-                return results
-            raise
-        while num:
-            results.append(self._get_value())
-            num -= 1
-        return results
+        return set(self._get_multi_response())
+    
+    def sinterstore(self, dest, *args):
+        """
+        >>> r = Redis()
+        >>> res = r.delete('s1')
+        >>> res = r.delete('s2')
+        >>> res = r.delete('s3')
+        >>> r.sadd('s1', 'a')
+        1
+        >>> r.sadd('s2', 'a')
+        1
+        >>> r.sadd('s3', 'b')
+        1
+        >>> r.sinterstore('s_s', 's1', 's2', 's3')
+        'OK'
+        >>> r.sinterstore('s_s', 's1', 's2')
+        'OK'
+        >>> r.smembers('s_s')
+        set(['a'])
+        >>> 
+        """
+        self.connect()
+        self._write('SINTERSTORE %s %s\r\n' % (dest, ' '.join(args)))
+        return self._get_simple_response()
 
     def smembers(self, name):
         """
@@ -619,22 +723,12 @@ class Redis(object):
         ...     print e
         Operation against a key holding the wrong kind of value
         >>> r.smembers('s')
-        ['a', 'b']
+        set(['a', 'b'])
         >>> 
         """
         self.connect()
         self._write('SMEMBERS %s\r\n' % name)
-        results = list()
-        try:
-            num = self._get_numeric_response(allow_negative=False)
-        except InvalidResponse, e:
-            if e.args[1] == 'nil':
-                return results
-            raise
-        while num:
-            results.append(self._get_value())
-            num -= 1
-        return results
+        return set(self._get_multi_response())
 
     def select(self, db):
         """
@@ -720,9 +814,22 @@ class Redis(object):
         self._write('LASTSAVE\r\n')
         return self._get_numeric_response()
     
-    def _get_value(self):
+    def flush(self, all_dbs=False):
+        """
+        >>> r = Redis()
+        >>> r.flush()
+        'OK'
+        >>> r.flush(all_dbs=True)
+        'OK'
+        >>> 
+        """
+        self.connect()
+        self._write('%s\r\n' % ('FLUSHALL' if all_dbs else 'FLUSHDB'))
+        return self._get_simple_response()
+    
+    def _get_value(self, negative_as_nil=False):
         data = self._read().strip()
-        if data == 'nil':
+        if data == 'nil' or (negative_as_nil and data == '-1'):
             return
         elif data[0] == '-':
             self._check_for_error(data)
@@ -762,6 +869,19 @@ class Redis(object):
             return value
         self._check_for_error(data)
         raise InvalidResponse("Cannot parse first line '%s' for a numeric response: %s." % (data, e), data)
+        
+    def _get_multi_response(self):
+        results = list()
+        try:
+            num = self._get_numeric_response(allow_negative=False)
+        except InvalidResponse, e:
+            if e.args[1] == 'nil':
+                return results
+            raise
+        while num:
+            results.append(self._get_value(negative_as_nil=True))
+            num -= 1
+        return results
         
     def _check_for_error(self, data):
         if not data or data[0] != '-':

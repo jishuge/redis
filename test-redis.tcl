@@ -11,7 +11,7 @@ proc test {name code okpattern} {
         puts "PASSED"
         incr ::passed
     } else {
-        puts "!! ERROR expected '$okpattern' but got '$retval'"
+        puts "!! ERROR expected\n'$okpattern'\nbut got\n'$retval'"
         incr ::failed
     }
 }
@@ -406,13 +406,23 @@ proc main {server port} {
         }
         lsort [redis_sinter $fd set1 set2]
     } {995 996 997 998 999}
+    
+    test {SINTERSTORE with two sets} {
+        redis_sinterstore $fd setres set1 set2
+        lsort [redis_smembers $fd setres]
+    } {995 996 997 998 999}
 
-    test {LINTER against three sets} {
+    test {SINTER against three sets} {
         redis_sadd $fd set3 999
         redis_sadd $fd set3 995
         redis_sadd $fd set3 1000
         redis_sadd $fd set3 2000
         lsort [redis_sinter $fd set1 set2 set3]
+    } {995 999}
+
+    test {SINTERSTORE with three sets} {
+        redis_sinterstore $fd setres set1 set2 set3
+        lsort [redis_smembers $fd setres]
     } {995 999}
     
     test {SAVE - make sure there are all the types as values} {
@@ -422,23 +432,131 @@ proc main {server port} {
         redis_set $fd mynormalkey {blablablba}
         redis_save $fd
     } {+OK}
+    
+    test {Create a random list} {
+        set tosort {}
+        array set seenrand {}
+        for {set i 0} {$i < 10000} {incr i} {
+            while 1 {
+                # Make sure all the weights are different because
+                # Redis does not use a stable sort but Tcl does.
+                set r [expr int(rand()*1000000)]
+                if {![info exists seenrand($r)]} break
+            }
+            set seenrand($r) x
+            redis_lpush $fd tosort $i
+            redis_set $fd weight_$i $r
+            lappend tosort [list $i $r]
+        }
+        set sorted [lsort -index 1 -real $tosort]
+        set res {}
+        for {set i 0} {$i < 10000} {incr i} {
+            lappend res [lindex $sorted $i 0]
+        }
+        format {}
+    } {}
+
+    test {SORT with BY against the newly created list} {
+        redis_sort $fd tosort {BY weight_*}
+    } $res
+
+    test {SORT direct, numeric, against the newly created list} {
+        redis_sort $fd tosort
+    } [lsort -integer $res]
+
+    test {SORT decreasing sort} {
+        redis_sort $fd tosort {DESC}
+    } [lsort -decreasing -integer $res]
+
+    test {SORT speed, sorting 10000 elements list using BY, 100 times} {
+        set start [clock clicks -milliseconds]
+        for {set i 0} {$i < 100} {incr i} {
+            set sorted [redis_sort $fd tosort {BY weight_* LIMIT 0 10}]
+        }
+        set elapsed [expr [clock clicks -milliseconds]-$start]
+        puts -nonewline "\n  Average time to sort: [expr double($elapsed)/100] milliseconds "
+        flush stdout
+        format {}
+    } {}
+
+    test {SORT speed, sorting 10000 elements list directly, 100 times} {
+        set start [clock clicks -milliseconds]
+        for {set i 0} {$i < 100} {incr i} {
+            set sorted [redis_sort $fd tosort {LIMIT 0 10}]
+        }
+        set elapsed [expr [clock clicks -milliseconds]-$start]
+        puts -nonewline "\n  Average time to sort: [expr double($elapsed)/100] milliseconds "
+        flush stdout
+        format {}
+    } {}
+
+    test {SORT speed, pseudo-sorting 10000 elements list, BY <const>, 100 times} {
+        set start [clock clicks -milliseconds]
+        for {set i 0} {$i < 100} {incr i} {
+            set sorted [redis_sort $fd tosort {BY nokey LIMIT 0 10}]
+        }
+        set elapsed [expr [clock clicks -milliseconds]-$start]
+        puts -nonewline "\n  Average time to sort: [expr double($elapsed)/100] milliseconds "
+        flush stdout
+        format {}
+    } {}
+
+    test {SORT regression test #1, sorting floats} {
+        redis_flushdb $fd
+        foreach x {1.1 5.10 3.10 7.44 2.1 5.75 6.12 0.25 1.15} {
+            redis_lpush $fd mylist $x
+        }
+        redis_sort $fd mylist
+    } [lsort -real {1.1 5.10 3.10 7.44 2.1 5.75 6.12 0.25 1.15}]
+
+    test {LREM, remove all the occurrences} {
+        redis_flushall $fd
+        redis_rpush $fd mylist foo
+        redis_rpush $fd mylist bar
+        redis_rpush $fd mylist foobar
+        redis_rpush $fd mylist foobared
+        redis_rpush $fd mylist zap
+        redis_rpush $fd mylist bar
+        redis_rpush $fd mylist test
+        redis_rpush $fd mylist foo
+        set res [redis_lrem $fd mylist 0 bar]
+        list [redis_lrange $fd mylist 0 -1] $res
+    } {{foo foobar foobared zap test foo} 2}
+
+    test {LREM, remove the first occurrence} {
+        set res [redis_lrem $fd mylist 1 foo]
+        list [redis_lrange $fd mylist 0 -1] $res
+    } {{foobar foobared zap test foo} 1}
+
+    test {LREM, remove non existing element} {
+        set res [redis_lrem $fd mylist 1 nosuchelement]
+        list [redis_lrange $fd mylist 0 -1] $res
+    } {{foobar foobared zap test foo} 0}
+
+    test {LREM, starting from tail with negative count} {
+        redis_flushall $fd
+        redis_rpush $fd mylist foo
+        redis_rpush $fd mylist bar
+        redis_rpush $fd mylist foobar
+        redis_rpush $fd mylist foobared
+        redis_rpush $fd mylist zap
+        redis_rpush $fd mylist bar
+        redis_rpush $fd mylist test
+        redis_rpush $fd mylist foo
+        redis_rpush $fd mylist foo
+        set res [redis_lrem $fd mylist -1 bar]
+        list [redis_lrange $fd mylist 0 -1] $res
+    } {{foo bar foobar foobared zap test foo foo} 1}
+
+    test {LREM, starting from tail with negative count (2)} {
+        set res [redis_lrem $fd mylist -2 foo]
+        list [redis_lrange $fd mylist 0 -1] $res
+    } {{foo bar foobar foobared zap test} 2}
 
     # Leave the user with a clean DB before to exit
-    test {DEL all keys again (DB 0)} {
-        foreach key [redis_keys $fd *] {
-            redis_del $fd $key
-        }
+    test {FLUSHALL} {
+        redis_flushall $fd
         redis_dbsize $fd
-    } {0}
-
-    test {DEL all keys again (DB 1)} {
-        redis_select $fd 1
-        foreach key [redis_keys $fd *] {
-            redis_del $fd $key
-        }
-        set res [redis_dbsize $fd]
-        redis_select $fd 0
-        format $res
     } {0}
 
     puts "\n[expr $::passed+$::failed] tests, $::passed passed, $::failed failed"
@@ -592,6 +710,11 @@ proc redis_lrange {fd key first last} {
     redis_multi_bulk_read $fd
 }
 
+proc redis_sort {fd key {params {}}} {
+    redis_writenl $fd "sort $key $params"
+    redis_multi_bulk_read $fd
+}
+
 proc redis_ltrim {fd key first last} {
     redis_writenl $fd "ltrim $key $first $last"
     redis_read_retcode $fd
@@ -642,6 +765,11 @@ proc redis_sinter {fd args} {
     redis_multi_bulk_read $fd
 }
 
+proc redis_sinterstore {fd args} {
+    redis_writenl $fd "sinterstore [join $args]\r\n"
+    redis_read_retcode $fd
+}
+
 proc redis_smembers {fd key} {
     redis_writenl $fd "smembers $key\r\n"
     redis_multi_bulk_read $fd
@@ -655,6 +783,21 @@ proc redis_echo {fd str} {
 proc redis_save {fd} {
     redis_writenl $fd "save\r\n"
     redis_read_retcode $fd
+}
+
+proc redis_flushall {fd} {
+    redis_writenl $fd "flushall\r\n"
+    redis_read_retcode $fd
+}
+
+proc redis_flushdb {fd} {
+    redis_writenl $fd "flushdb\r\n"
+    redis_read_retcode $fd
+}
+
+proc redis_lrem {fd key count val} {
+    redis_writenl $fd "lrem $key $count [string length $val]\r\n$val"
+    redis_read_integer $fd
 }
 
 if {[llength $argv] == 0} {

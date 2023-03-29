@@ -1,7 +1,7 @@
 K 25
 svn:wc:ra_dav:version-url
-V 46
-/svn/!svn/ver/52/trunk/client-libraries/erlang
+V 47
+/svn/!svn/ver/186/trunk/client-libraries/erlang
 END
 .hgignore
 K 25
@@ -18,8 +18,8 @@ END
 .hg_archival.txt
 K 25
 svn:wc:ra_dav:version-url
-V 63
-/svn/!svn/ver/52/trunk/client-libraries/erlang/.hg_archival.txt
+V 64
+/svn/!svn/ver/186/trunk/client-libraries/erlang/.hg_archival.txt
 END
 Makefile
 K 25

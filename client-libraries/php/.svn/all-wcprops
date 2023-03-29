@@ -1,7 +1,7 @@
 K 25
 svn:wc:ra_dav:version-url
-V 43
-/svn/!svn/ver/69/trunk/client-libraries/php
+V 44
+/svn/!svn/ver/139/trunk/client-libraries/php
 END
 tests.php
 K 25
@@ -12,6 +12,6 @@ END
 redis.php
 K 25
 svn:wc:ra_dav:version-url
-V 53
-/svn/!svn/ver/69/trunk/client-libraries/php/redis.php
+V 54
+/svn/!svn/ver/139/trunk/client-libraries/php/redis.php
 END

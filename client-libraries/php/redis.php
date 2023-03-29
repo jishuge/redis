@@ -7,8 +7,8 @@
  *
  * Version: 0.1
  *
- * $Revision: 69 $
- * $Date: 2009-03-07 16:39:31 +0100 (Sab, 07 Mar 2009) $
+ * $Revision: 139 $
+ * $Date: 2009-03-15 22:59:40 +0100 (Dom, 15 Mar 2009) $
  *
  ******************************************************************************/
 
@@ -166,6 +166,16 @@ class Redis {
         $this->_write("LRANGE $name $start $end\r\n");
         return $this->_get_multi();
     }
+
+    function &sort($name, $query=false) {
+        $this->connect();
+        if ($query === false) {
+            $this->_write("SORT $name\r\n");
+        } else {
+            $this->_write("SORT $name $query\r\n");
+        }
+        return $this->_get_multi();
+    }
     
     function &lset($name, $value, $index) {
         $this->connect();
@@ -201,6 +211,12 @@ class Redis {
         $this->connect();
         $this->_write("SMEMBERS $name\r\n");
         return $this->_get_multi();
+    }
+
+    function &scard($name) {
+        $this->connect();
+        $this->_write("SCARD $name\r\n");
+        return $this->_numeric_response();
     }
     
     function &select_db($name) {

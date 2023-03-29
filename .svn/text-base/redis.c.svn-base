@@ -1,6 +1,33 @@
-/* Redis - REmote DIctionary Server
- * Copyright (C) 2008 Salvatore Sanfilippo antirez at gmail dot com
- * All Rights Reserved. Under the GPL version 2. See the COPYING file. */
+/*
+ * Copyright (c) 2006-2009, Salvatore Sanfilippo <antirez at gmail dot com>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ *   * Redistributions of source code must retain the above copyright notice,
+ *     this list of conditions and the following disclaimer.
+ *   * Redistributions in binary form must reproduce the above copyright
+ *     notice, this list of conditions and the following disclaimer in the
+ *     documentation and/or other materials provided with the distribution.
+ *   * Neither the name of Redis nor the names of its contributors may be used
+ *     to endorse or promote products derived from this software without
+ *     specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
+
+#define REDIS_VERSION "0.07"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -69,6 +96,15 @@
 #define REDIS_HEAD 0
 #define REDIS_TAIL 1
 
+/* Sort operations */
+#define REDIS_SORT_GET 0
+#define REDIS_SORT_DEL 1
+#define REDIS_SORT_INCR 2
+#define REDIS_SORT_DECR 3
+#define REDIS_SORT_ASC 4
+#define REDIS_SORT_DESC 5
+#define REDIS_SORTKEY_MAX 1024
+
 /* Log levels */
 #define REDIS_DEBUG 0
 #define REDIS_NOTICE 1
@@ -118,24 +154,32 @@ struct redisServer {
     list *slaves;
     char neterr[ANET_ERR_LEN];
     aeEventLoop *el;
+    int cronloops;              /* number of times the cron function run */
+    list *objfreelist;          /* A list of freed objects to avoid malloc() */
+    time_t lastsave;            /* Unix time of last save succeeede */
+    /* Configuration */
     int verbosity;
     int glueoutputbuf;
-    int cronloops;
     int maxidletime;
     int dbnum;
-    list *objfreelist;          /* A list of freed objects to avoid malloc() */
+    int daemonize;
     int bgsaveinprogress;
-    time_t lastsave;
     struct saveparam *saveparams;
     int saveparamslen;
     char *logfile;
     char *bindaddr;
+    char *dbfilename;
     /* Replication related */
     int isslave;
     char *masterhost;
     int masterport;
     redisClient *master;
     int replstate;
+    /* Sort parameters - qsort_r() is only available under BSD so we
+     * have to take this state global, in order to pass it to sortCompare() */
+    int sort_desc;
+    int sort_alpha;
+    int sort_bypattern;
 };
 
 typedef void redisCommandProc(redisClient *c);
@@ -146,10 +190,24 @@ struct redisCommand {
     int flags;
 };
 
+typedef struct _redisSortObject {
+    robj *obj;
+    union {
+        double score;
+        robj *cmpobj;
+    } u;
+} redisSortObject;
+
+typedef struct _redisSortOperation {
+    int type;
+    robj *pattern;
+} redisSortOperation;
+
 struct sharedObjectsStruct {
     robj *crlf, *ok, *err, *zerobulk, *nil, *zero, *one, *pong, *space,
     *minus1, *minus2, *minus3, *minus4,
     *wrongtypeerr, *nokeyerr, *wrongtypeerrbulk, *nokeyerrbulk,
+    *syntaxerr, *syntaxerrbulk,
     *select0, *select1, *select2, *select3, *select4,
     *select5, *select6, *select7, *select8, *select9;
 } shared;
@@ -208,7 +266,13 @@ static void sremCommand(redisClient *c);
 static void sismemberCommand(redisClient *c);
 static void scardCommand(redisClient *c);
 static void sinterCommand(redisClient *c);
+static void sinterstoreCommand(redisClient *c);
 static void syncCommand(redisClient *c);
+static void flushdbCommand(redisClient *c);
+static void flushallCommand(redisClient *c);
+static void sortCommand(redisClient *c);
+static void lremCommand(redisClient *c);
+static void versionCommand(redisClient *c);
 
 /*================================= Globals ================================= */
 
@@ -231,11 +295,13 @@ static struct redisCommand cmdTable[] = {
     {"lset",lsetCommand,4,REDIS_CMD_BULK},
     {"lrange",lrangeCommand,4,REDIS_CMD_INLINE},
     {"ltrim",ltrimCommand,4,REDIS_CMD_INLINE},
+    {"lrem",lremCommand,4,REDIS_CMD_BULK},
     {"sadd",saddCommand,3,REDIS_CMD_BULK},
     {"srem",sremCommand,3,REDIS_CMD_BULK},
     {"sismember",sismemberCommand,3,REDIS_CMD_BULK},
     {"scard",scardCommand,2,REDIS_CMD_INLINE},
     {"sinter",sinterCommand,-2,REDIS_CMD_INLINE},
+    {"sinterstore",sinterstoreCommand,-3,REDIS_CMD_INLINE},
     {"smembers",sinterCommand,2,REDIS_CMD_INLINE},
     {"incrby",incrbyCommand,3,REDIS_CMD_INLINE},
     {"decrby",decrbyCommand,3,REDIS_CMD_INLINE},
@@ -254,6 +320,10 @@ static struct redisCommand cmdTable[] = {
     {"lastsave",lastsaveCommand,1,REDIS_CMD_INLINE},
     {"type",typeCommand,2,REDIS_CMD_INLINE},
     {"sync",syncCommand,1,REDIS_CMD_INLINE},
+    {"flushdb",flushdbCommand,1,REDIS_CMD_INLINE},
+    {"flushall",flushallCommand,1,REDIS_CMD_INLINE},
+    {"sort",sortCommand,-2,REDIS_CMD_INLINE},
+    {"version",versionCommand,1,REDIS_CMD_INLINE},
     {"",NULL,0,0}
 };
 
@@ -549,7 +619,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
                 now-server.lastsave > sp->seconds) {
                 redisLog(REDIS_NOTICE,"%d changes in %d seconds. Saving...",
                     sp->changes, sp->seconds);
-                saveDbBackground("dump.rdb");
+                saveDbBackground(server.dbfilename);
                 break;
             }
          }
@@ -587,6 +657,9 @@ static void createSharedObjects(void) {
     shared.nokeyerr = createObject(REDIS_STRING,sdsnew(
         "-ERR no such key\r\n"));
     shared.nokeyerrbulk = createObject(REDIS_STRING,sdscatprintf(sdsempty(),"%d\r\n%s",-sdslen(shared.nokeyerr->ptr)+2,shared.nokeyerr->ptr));
+    shared.syntaxerr = createObject(REDIS_STRING,sdsnew(
+        "-ERR syntax error\r\n"));
+    shared.syntaxerrbulk = createObject(REDIS_STRING,sdscatprintf(sdsempty(),"%d\r\n%s",-sdslen(shared.syntaxerr->ptr)+2,shared.syntaxerr->ptr));
     shared.space = createObject(REDIS_STRING,sdsnew(" "));
     shared.select0 = createStringObject("select 0\r\n",10);
     shared.select1 = createStringObject("select 1\r\n",10);
@@ -623,6 +696,8 @@ static void initServerConfig() {
     server.logfile = NULL; /* NULL = log on standard output */
     server.bindaddr = NULL;
     server.glueoutputbuf = 1;
+    server.daemonize = 0;
+    server.dbfilename = "dump.rdb";
     ResetServerSaveParams();
 
     appendServerSaveParams(60*60,1);  /* save after 1 hour and 1 change */
@@ -771,6 +846,13 @@ static void loadServerConfig(char *filename) {
             sdstolower(argv[1]);
             if (!strcmp(argv[1],"yes")) server.glueoutputbuf = 1;
             else if (!strcmp(argv[1],"no")) server.glueoutputbuf = 0;
+            else {
+                err = "argument must be 'yes' or 'no'"; goto loaderr;
+            }
+        } else if (!strcmp(argv[0],"daemonize") && argc == 2) {
+            sdstolower(argv[1]);
+            if (!strcmp(argv[1],"yes")) server.daemonize = 1;
+            else if (!strcmp(argv[1],"no")) server.daemonize = 0;
             else {
                 err = "argument must be 'yes' or 'no'"; goto loaderr;
             }
@@ -1748,7 +1830,7 @@ static void typeCommand(redisClient *c) {
 }
 
 static void saveCommand(redisClient *c) {
-    if (saveDb("dump.rdb") == REDIS_OK) {
+    if (saveDb(server.dbfilename) == REDIS_OK) {
         addReply(c,shared.ok);
     } else {
         addReply(c,shared.err);
@@ -1760,7 +1842,7 @@ static void bgsaveCommand(redisClient *c) {
         addReplySds(c,sdsnew("-ERR background save already in progress\r\n"));
         return;
     }
-    if (saveDbBackground("dump.rdb") == REDIS_OK) {
+    if (saveDbBackground(server.dbfilename) == REDIS_OK) {
         addReply(c,shared.ok);
     } else {
         addReply(c,shared.err);
@@ -1769,7 +1851,7 @@ static void bgsaveCommand(redisClient *c) {
 
 static void shutdownCommand(redisClient *c) {
     redisLog(REDIS_WARNING,"User requested shutdown, saving DB...");
-    if (saveDb("dump.rdb") == REDIS_OK) {
+    if (saveDb(server.dbfilename) == REDIS_OK) {
         redisLog(REDIS_WARNING,"Server exit now, bye bye...");
         exit(1);
     } else {
@@ -2137,6 +2219,45 @@ static void ltrimCommand(redisClient *c) {
     }
 }
 
+static void lremCommand(redisClient *c) {
+    dictEntry *de;
+    
+    de = dictFind(c->dict,c->argv[1]);
+    if (de == NULL) {
+        addReply(c,shared.minus1);
+    } else {
+        robj *o = dictGetEntryVal(de);
+        
+        if (o->type != REDIS_LIST) {
+            addReply(c,shared.minus2);
+        } else {
+            list *list = o->ptr;
+            listNode *ln, *next;
+            int toremove = atoi(c->argv[2]->ptr);
+            int removed = 0;
+            int fromtail = 0;
+
+            if (toremove < 0) {
+                toremove = -toremove;
+                fromtail = 1;
+            }
+            ln = fromtail ? list->tail : list->head;
+            while (ln) {
+                next = fromtail ? ln->prev : ln->next;
+                robj *ele = listNodeValue(ln);
+                if (sdscmp(ele->ptr,c->argv[3]->ptr) == 0) {
+                    listDelNode(list,ln);
+                    server.dirty++;
+                    removed++;
+                    if (toremove && removed == toremove) break;
+                }
+                ln = next;
+            }
+            addReplySds(c,sdscatprintf(sdsempty(),"%d\r\n",removed));
+        }
+    }
+}
+
 /* ==================================== Sets ================================ */
 
 static void saddCommand(redisClient *c) {
@@ -2234,44 +2355,53 @@ static int qsortCompareSetsByCardinality(const void *s1, const void *s2) {
     return dictGetHashTableUsed(*d1)-dictGetHashTableUsed(*d2);
 }
 
-static void sinterCommand(redisClient *c) {
-    dict **dv = malloc(sizeof(dict*)*(c->argc-1));
+static void sinterGenericCommand(redisClient *c, robj **setskeys, int setsnum, robj *dstkey) {
+    dict **dv = malloc(sizeof(dict*)*setsnum);
     dictIterator *di;
     dictEntry *de;
-    robj *lenobj;
+    robj *lenobj = NULL, *dstset = NULL;
     int j, cardinality = 0;
 
     if (!dv) oom("sinterCommand");
-    for (j = 0; j < c->argc-1; j++) {
+    for (j = 0; j < setsnum; j++) {
         robj *setobj;
         dictEntry *de;
         
-        de = dictFind(c->dict,c->argv[j+1]);
+        de = dictFind(c->dict,setskeys[j]);
         if (!de) {
             free(dv);
-            addReply(c,shared.nil);
+            addReply(c,dstkey ? shared.nokeyerr : shared.nil);
             return;
         }
         setobj = dictGetEntryVal(de);
         if (setobj->type != REDIS_SET) {
             free(dv);
-            addReply(c,shared.wrongtypeerrbulk);
+            addReply(c,dstkey ? shared.wrongtypeerr : shared.wrongtypeerrbulk);
             return;
         }
         dv[j] = setobj->ptr;
     }
     /* Sort sets from the smallest to largest, this will improve our
      * algorithm's performace */
-    qsort(dv,c->argc-1,sizeof(dict*),qsortCompareSetsByCardinality);
+    qsort(dv,setsnum,sizeof(dict*),qsortCompareSetsByCardinality);
 
     /* The first thing we should output is the total number of elements...
      * since this is a multi-bulk write, but at this stage we don't know
      * the intersection set size, so we use a trick, append an empty object
      * to the output list and save the pointer to later modify it with the
      * right length */
-    lenobj = createObject(REDIS_STRING,NULL);
-    addReply(c,lenobj);
-    decrRefCount(lenobj);
+    if (!dstkey) {
+        lenobj = createObject(REDIS_STRING,NULL);
+        addReply(c,lenobj);
+        decrRefCount(lenobj);
+    } else {
+        /* If we have a target key where to store the resulting set
+         * create this key with an empty set inside */
+        dstset = createSetObject();
+        dictDelete(c->dict,dstkey);
+        dictAdd(c->dict,dstkey,dstset);
+        incrRefCount(dstkey);
+    }
 
     /* Iterate all the elements of the first (smallest) set, and test
      * the element against all the other sets, if at least one set does
@@ -2282,19 +2412,333 @@ static void sinterCommand(redisClient *c) {
     while((de = dictNext(di)) != NULL) {
         robj *ele;
 
-        for (j = 1; j < c->argc-1; j++)
+        for (j = 1; j < setsnum; j++)
             if (dictFind(dv[j],dictGetEntryKey(de)) == NULL) break;
-        if (j != c->argc-1)
+        if (j != setsnum)
             continue; /* at least one set does not contain the member */
         ele = dictGetEntryKey(de);
-        addReplySds(c,sdscatprintf(sdsempty(),"%d\r\n",sdslen(ele->ptr)));
-        addReply(c,ele);
-        addReply(c,shared.crlf);
-        cardinality++;
+        if (!dstkey) {
+            addReplySds(c,sdscatprintf(sdsempty(),"%d\r\n",sdslen(ele->ptr)));
+            addReply(c,ele);
+            addReply(c,shared.crlf);
+            cardinality++;
+        } else {
+            dictAdd(dstset->ptr,ele,NULL);
+            incrRefCount(ele);
+        }
     }
-    lenobj->ptr = sdscatprintf(sdsempty(),"%d\r\n",cardinality);
     dictReleaseIterator(di);
+
+    if (!dstkey)
+        lenobj->ptr = sdscatprintf(sdsempty(),"%d\r\n",cardinality);
+    else
+        addReply(c,shared.ok);
     free(dv);
+}
+
+static void sinterCommand(redisClient *c) {
+    sinterGenericCommand(c,c->argv+1,c->argc-1,NULL);
+}
+
+static void sinterstoreCommand(redisClient *c) {
+    sinterGenericCommand(c,c->argv+2,c->argc-2,c->argv[1]);
+}
+
+static void flushdbCommand(redisClient *c) {
+    dictEmpty(c->dict);
+    addReply(c,shared.ok);
+    saveDb(server.dbfilename);
+}
+
+static void flushallCommand(redisClient *c) {
+    emptyDb();
+    addReply(c,shared.ok);
+    saveDb(server.dbfilename);
+}
+
+redisSortOperation *createSortOperation(int type, robj *pattern) {
+    redisSortOperation *so = malloc(sizeof(*so));
+    if (!so) oom("createSortOperation");
+    so->type = type;
+    so->pattern = pattern;
+    return so;
+}
+
+/* Return the value associated to the key with a name obtained
+ * substituting the first occurence of '*' in 'pattern' with 'subst' */
+robj *lookupKeyByPattern(dict *dict, robj *pattern, robj *subst) {
+    char *p;
+    sds spat, ssub;
+    robj keyobj;
+    int prefixlen, sublen, postfixlen;
+    dictEntry *de;
+    /* Expoit the internal sds representation to create a sds string allocated on the stack in order to make this function faster */
+    struct {
+        long len;
+        long free;
+        char buf[REDIS_SORTKEY_MAX+1];
+    } keyname;
+
+
+    spat = pattern->ptr;
+    ssub = subst->ptr;
+    if (sdslen(spat)+sdslen(ssub)-1 > REDIS_SORTKEY_MAX) return NULL;
+    p = strchr(spat,'*');
+    if (!p) return NULL;
+
+    prefixlen = p-spat;
+    sublen = sdslen(ssub);
+    postfixlen = sdslen(spat)-(prefixlen+1);
+    memcpy(keyname.buf,spat,prefixlen);
+    memcpy(keyname.buf+prefixlen,ssub,sublen);
+    memcpy(keyname.buf+prefixlen+sublen,p+1,postfixlen);
+    keyname.buf[prefixlen+sublen+postfixlen] = '\0';
+    keyname.len = prefixlen+sublen+postfixlen;
+
+    keyobj.refcount = 1;
+    keyobj.type = REDIS_STRING;
+    keyobj.ptr = ((char*)&keyname)+(sizeof(long)*2);
+
+    de = dictFind(dict,&keyobj);
+    // printf("lookup '%s' => %p\n", keyname.buf,de);
+    if (!de) return NULL;
+    return dictGetEntryVal(de);
+}
+
+/* sortCompare() is used by qsort in sortCommand(). Given that qsort_r with
+ * the additional parameter is not standard but a BSD-specific we have to
+ * pass sorting parameters via the global 'server' structure */
+static int sortCompare(const void *s1, const void *s2) {
+    const redisSortObject *so1 = s1, *so2 = s2;
+    int cmp;
+
+    if (!server.sort_alpha) {
+        /* Numeric sorting. Here it's trivial as we precomputed scores */
+        if (so1->u.score > so2->u.score) {
+            cmp = 1;
+        } else if (so1->u.score < so2->u.score) {
+            cmp = -1;
+        } else {
+            cmp = 0;
+        }
+    } else {
+        /* Alphanumeric sorting */
+        if (server.sort_bypattern) {
+            if (!so1->u.cmpobj || !so2->u.cmpobj) {
+                /* At least one compare object is NULL */
+                if (so1->u.cmpobj == so2->u.cmpobj)
+                    cmp = 0;
+                else if (so1->u.cmpobj == NULL)
+                    cmp = -1;
+                else
+                    cmp = 1;
+            } else {
+                /* We have both the objects, use strcoll */
+                cmp = strcoll(so1->u.cmpobj->ptr,so2->u.cmpobj->ptr);
+            }
+        } else {
+            /* Compare elements directly */
+            cmp = strcoll(so1->obj->ptr,so2->obj->ptr);
+        }
+    }
+    return server.sort_desc ? -cmp : cmp;
+}
+
+/* The SORT command is the most complex command in Redis. Warning: this code
+ * is optimized for speed and a bit less for readability */
+static void sortCommand(redisClient *c) {
+    dictEntry *de;
+    list *operations;
+    int outputlen = 0;
+    int desc = 0, alpha = 0;
+    int limit_start = 0, limit_count = -1, start, end;
+    int j, dontsort = 0, vectorlen;
+    int getop = 0; /* GET operation counter */
+    robj *sortval, *sortby = NULL;
+    redisSortObject *vector; /* Resulting vector to sort */
+
+    /* Lookup the key to sort. It must be of the right types */
+    de = dictFind(c->dict,c->argv[1]);
+    if (de == NULL) {
+        addReply(c,shared.nokeyerrbulk);
+        return;
+    }
+    sortval = dictGetEntryVal(de);
+    if (sortval->type != REDIS_SET && sortval->type != REDIS_LIST) {
+        addReply(c,shared.wrongtypeerrbulk);
+        return;
+    }
+
+    /* Create a list of operations to perform for every sorted element.
+     * Operations can be GET/DEL/INCR/DECR */
+    operations = listCreate();
+    listSetFreeMethod(operations,free);
+    j = 2;
+
+    /* The SORT command has an SQL-alike syntax, parse it */
+    while(j < c->argc) {
+        int leftargs = c->argc-j-1;
+        if (!strcasecmp(c->argv[j]->ptr,"asc")) {
+            desc = 0;
+        } else if (!strcasecmp(c->argv[j]->ptr,"desc")) {
+            desc = 1;
+        } else if (!strcasecmp(c->argv[j]->ptr,"alpha")) {
+            alpha = 1;
+        } else if (!strcasecmp(c->argv[j]->ptr,"limit") && leftargs >= 2) {
+            limit_start = atoi(c->argv[j+1]->ptr);
+            limit_count = atoi(c->argv[j+2]->ptr);
+            j+=2;
+        } else if (!strcasecmp(c->argv[j]->ptr,"by") && leftargs >= 1) {
+            sortby = c->argv[j+1];
+            /* If the BY pattern does not contain '*', i.e. it is constant,
+             * we don't need to sort nor to lookup the weight keys. */
+            if (strchr(c->argv[j+1]->ptr,'*') == NULL) dontsort = 1;
+            j++;
+        } else if (!strcasecmp(c->argv[j]->ptr,"get") && leftargs >= 1) {
+            listAddNodeTail(operations,createSortOperation(
+                REDIS_SORT_GET,c->argv[j+1]));
+            getop++;
+            j++;
+        } else if (!strcasecmp(c->argv[j]->ptr,"del") && leftargs >= 1) {
+            listAddNodeTail(operations,createSortOperation(
+                REDIS_SORT_DEL,c->argv[j+1]));
+            j++;
+        } else if (!strcasecmp(c->argv[j]->ptr,"incr") && leftargs >= 1) {
+            listAddNodeTail(operations,createSortOperation(
+                REDIS_SORT_INCR,c->argv[j+1]));
+            j++;
+        } else if (!strcasecmp(c->argv[j]->ptr,"get") && leftargs >= 1) {
+            listAddNodeTail(operations,createSortOperation(
+                REDIS_SORT_DECR,c->argv[j+1]));
+            j++;
+        } else {
+            listRelease(operations);
+            addReply(c,shared.syntaxerrbulk);
+            return;
+        }
+        j++;
+    }
+
+    /* Load the sorting vector with all the objects to sort */
+    vectorlen = (sortval->type == REDIS_LIST) ?
+        listLength((list*)sortval->ptr) :
+        dictGetHashTableUsed((dict*)sortval->ptr);
+    vector = malloc(sizeof(redisSortObject)*vectorlen);
+    if (!vector) oom("allocating objects vector for SORT");
+    j = 0;
+    if (sortval->type == REDIS_LIST) {
+        list *list = sortval->ptr;
+        listNode *ln = list->head;
+        while(ln) {
+            robj *ele = ln->value;
+            vector[j].obj = ele;
+            incrRefCount(ele);
+            vector[j].u.score = 0;
+            vector[j].u.cmpobj = NULL;
+            ln = ln->next;
+            j++;
+        }
+    } else {
+        dict *set = sortval->ptr;
+        dictIterator *di;
+        dictEntry *setele;
+
+        di = dictGetIterator(set);
+        if (!di) oom("dictGetIterator");
+        while((setele = dictNext(di)) != NULL) {
+            vector[j].obj = dictGetEntryKey(setele);
+            incrRefCount(vector[j].obj);
+            vector[j].u.score = 0;
+            vector[j].u.cmpobj = NULL;
+            j++;
+        }
+        dictReleaseIterator(di);
+    }
+    assert(j == vectorlen);
+
+    /* Now it's time to load the right scores in the sorting vector */
+    if (dontsort == 0) {
+        for (j = 0; j < vectorlen; j++) {
+            if (sortby) {
+                robj *byval;
+
+                byval = lookupKeyByPattern(c->dict,sortby,vector[j].obj);
+                if (!byval || byval->type != REDIS_STRING) continue;
+                if (alpha) {
+                    vector[j].u.cmpobj = byval;
+                    incrRefCount(byval);
+                } else {
+                    vector[j].u.score = strtod(byval->ptr,NULL);
+                }
+            } else {
+                if (!alpha) vector[j].u.score = strtod(vector[j].obj->ptr,NULL);
+            }
+        }
+    }
+
+    /* We are ready to sort the vector... perform a bit of sanity check
+     * on the LIMIT option too. We'll use a partial version of quicksort. */
+    start = (limit_start < 0) ? 0 : limit_start;
+    end = (limit_count < 0) ? vectorlen-1 : start+limit_count-1;
+    if (start >= vectorlen) {
+        start = vectorlen-1;
+        end = vectorlen-2;
+    }
+    if (end >= vectorlen) end = vectorlen-1;
+
+    if (dontsort == 0) {
+        server.sort_desc = desc;
+        server.sort_alpha = alpha;
+        server.sort_bypattern = sortby ? 1 : 0;
+        qsort(vector,vectorlen,sizeof(redisSortObject),sortCompare);
+    }
+
+    /* Send command output to the output buffer, performing the specified
+     * GET/DEL/INCR/DECR operations if any. */
+    outputlen = getop ? getop*(end-start+1) : end-start+1;
+    addReplySds(c,sdscatprintf(sdsempty(),"%d\r\n",outputlen));
+    for (j = start; j <= end; j++) {
+        listNode *ln = operations->head;
+        if (!getop) {
+            addReplySds(c,sdscatprintf(sdsempty(),"%d\r\n",
+                sdslen(vector[j].obj->ptr)));
+            addReply(c,vector[j].obj);
+            addReply(c,shared.crlf);
+        }
+        while(ln) {
+            redisSortOperation *sop = ln->value;
+            robj *val = lookupKeyByPattern(c->dict,sop->pattern,
+                vector[j].obj);
+
+            if (sop->type == REDIS_SORT_GET) {
+                if (!val || val->type != REDIS_STRING) {
+                    addReply(c,shared.minus1);
+                } else {
+                    addReplySds(c,sdscatprintf(sdsempty(),"%d\r\n",
+                        sdslen(val->ptr)));
+                    addReply(c,val);
+                    addReply(c,shared.crlf);
+                }
+            } else if (sop->type == REDIS_SORT_DEL) {
+                /* TODO */
+            }
+            ln = ln->next;
+        }
+    }
+
+    /* Cleanup */
+    listRelease(operations);
+    for (j = 0; j < vectorlen; j++) {
+        decrRefCount(vector[j].obj);
+        if (sortby && alpha && vector[j].u.cmpobj)
+            decrRefCount(vector[j].u.cmpobj);
+    }
+    free(vector);
+}
+
+static void versionCommand(redisClient *c) {
+    addReplySds(c,sdsnew(REDIS_VERSION));
+    addReply(c,shared.crlf);
 }
 
 /* =============================== Replication  ============================= */
@@ -2385,10 +2829,10 @@ static void syncCommand(redisClient *c) {
     char sizebuf[32];
 
     redisLog(REDIS_NOTICE,"Slave ask for syncronization");
-    if (flushClientOutput(c) == REDIS_ERR || saveDb("dump.rdb") != REDIS_OK)
+    if (flushClientOutput(c) == REDIS_ERR || saveDb(server.dbfilename) != REDIS_OK)
         goto closeconn;
 
-    fd = open("dump.rdb", O_RDONLY);
+    fd = open(server.dbfilename, O_RDONLY);
     if (fd == -1 || fstat(fd,&sb) == -1) goto closeconn;
     len = sb.st_size;
 
@@ -2475,14 +2919,14 @@ static int syncWithMaster(void) {
         dumpsize -= nread;
     }
     close(dfd);
-    if (rename(tmpfile,"dump.rdb") == -1) {
+    if (rename(tmpfile,server.dbfilename) == -1) {
         redisLog(REDIS_WARNING,"Failed trying to rename the temp DB into dump.rdb in MASTER <-> SLAVE synchronization: %s", strerror(errno));
         unlink(tmpfile);
         close(fd);
         return REDIS_ERR;
     }
     emptyDb();
-    if (loadDb("dump.rdb") != REDIS_OK) {
+    if (loadDb(server.dbfilename) != REDIS_OK) {
         redisLog(REDIS_WARNING,"Failed trying to load the MASTER synchronization DB from disk");
         close(fd);
         return REDIS_ERR;
@@ -2495,19 +2939,43 @@ static int syncWithMaster(void) {
 
 /* =================================== Main! ================================ */
 
+static void daemonize(void) {
+    int fd;
+    FILE *fp;
+
+    if (fork() != 0) exit(0); /* parent exits */
+    setsid(); /* create a new session */
+
+    /* Every output goes to /dev/null. If Redis is daemonized but
+     * the 'logfile' is set to 'stdout' in the configuration file
+     * it will not log at all. */
+    if ((fd = open("/dev/null", O_RDWR, 0)) != -1) {
+        dup2(fd, STDIN_FILENO);
+        dup2(fd, STDOUT_FILENO);
+        dup2(fd, STDERR_FILENO);
+        if (fd > STDERR_FILENO) close(fd);
+    }
+    /* Try to write the pid file */
+    fp = fopen("/var/run/redis.pid","w");
+    if (fp) {
+        fprintf(fp,"%d\n",getpid());
+        fclose(fp);
+    }
+}
+
 int main(int argc, char **argv) {
     initServerConfig();
     if (argc == 2) {
         ResetServerSaveParams();
         loadServerConfig(argv[1]);
-        redisLog(REDIS_NOTICE,"Configuration loaded");
     } else if (argc > 2) {
         fprintf(stderr,"Usage: ./redis-server [/path/to/redis.conf]\n");
         exit(1);
     }
     initServer();
-    redisLog(REDIS_NOTICE,"Server started");
-    if (loadDb("dump.rdb") == REDIS_OK)
+    if (server.daemonize) daemonize();
+    redisLog(REDIS_NOTICE,"Server started, Redis version " REDIS_VERSION);
+    if (loadDb(server.dbfilename) == REDIS_OK)
         redisLog(REDIS_NOTICE,"DB loaded from disk");
     if (aeCreateFileEvent(server.el, server.fd, AE_READABLE,
         acceptHandler, NULL, NULL) == AE_ERR) oom("creating file event");
