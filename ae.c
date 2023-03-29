@@ -2,12 +2,33 @@
  * for the Jim's event-loop (Jim is a Tcl interpreter) but later translated
  * it in form of a library for easy reuse.
  *
- * Copyrights (C) 2007-2009 Salvatore Sanfilippo antirez at gmail dot com
- * All Rights Reserved
+ * Copyright (c) 2006-2009, Salvatore Sanfilippo <antirez at gmail dot com>
+ * All rights reserved.
  *
- * This software is released under the GPL version 2 license */
-
-#include "ae.h"
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are met:
+ *
+ *   * Redistributions of source code must retain the above copyright notice,
+ *     this list of conditions and the following disclaimer.
+ *   * Redistributions in binary form must reproduce the above copyright
+ *     notice, this list of conditions and the following disclaimer in the
+ *     documentation and/or other materials provided with the distribution.
+ *   * Neither the name of Redis nor the names of its contributors may be used
+ *     to endorse or promote products derived from this software without
+ *     specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+ * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
+ * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+ * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+ * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+ * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+ * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+ * POSSIBILITY OF SUCH DAMAGE.
+ */
 
 #include <stdio.h>
 #include <sys/time.h>
@@ -15,10 +36,13 @@
 #include <unistd.h>
 #include <stdlib.h>
 
+#include "ae.h"
+#include "zmalloc.h"
+
 aeEventLoop *aeCreateEventLoop(void) {
     aeEventLoop *eventLoop;
 
-    eventLoop = malloc(sizeof(*eventLoop));
+    eventLoop = zmalloc(sizeof(*eventLoop));
     if (!eventLoop) return NULL;
     eventLoop->fileEventHead = NULL;
     eventLoop->timeEventHead = NULL;
@@ -28,7 +52,7 @@ aeEventLoop *aeCreateEventLoop(void) {
 }
 
 void aeDeleteEventLoop(aeEventLoop *eventLoop) {
-    free(eventLoop);
+    zfree(eventLoop);
 }
 
 void aeStop(aeEventLoop *eventLoop) {
@@ -41,7 +65,7 @@ int aeCreateFileEvent(aeEventLoop *eventLoop, int fd, int mask,
 {
     aeFileEvent *fe;
 
-    fe = malloc(sizeof(*fe));
+    fe = zmalloc(sizeof(*fe));
     if (fe == NULL) return AE_ERR;
     fe->fd = fd;
     fe->mask = mask;
@@ -66,7 +90,7 @@ void aeDeleteFileEvent(aeEventLoop *eventLoop, int fd, int mask)
                 prev->next = fe->next;
             if (fe->finalizerProc)
                 fe->finalizerProc(eventLoop, fe->clientData);
-            free(fe);
+            zfree(fe);
             return;
         }
         prev = fe;
@@ -104,7 +128,7 @@ long long aeCreateTimeEvent(aeEventLoop *eventLoop, long long milliseconds,
     long long id = eventLoop->timeEventNextId++;
     aeTimeEvent *te;
 
-    te = malloc(sizeof(*te));
+    te = zmalloc(sizeof(*te));
     if (te == NULL) return AE_ERR;
     te->id = id;
     aeAddMillisecondsToNow(milliseconds,&te->when_sec,&te->when_ms);
@@ -129,7 +153,7 @@ int aeDeleteTimeEvent(aeEventLoop *eventLoop, long long id)
                 prev->next = te->next;
             if (te->finalizerProc)
                 te->finalizerProc(eventLoop, te->clientData);
-            free(te);
+            zfree(te);
             return AE_OK;
         }
         prev = te;
@@ -308,6 +332,32 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
         }
     }
     return processed; /* return the number of processed file/time events */
+}
+
+/* Wait for millseconds until the given file descriptor becomes
+ * writable/readable/exception */
+int aeWait(int fd, int mask, long long milliseconds) {
+    struct timeval tv;
+    fd_set rfds, wfds, efds;
+    int retmask = 0, retval;
+
+    tv.tv_sec = milliseconds/1000;
+    tv.tv_usec = (milliseconds%1000)*1000;
+    FD_ZERO(&rfds);
+    FD_ZERO(&wfds);
+    FD_ZERO(&efds);
+
+    if (mask & AE_READABLE) FD_SET(fd,&rfds);
+    if (mask & AE_WRITABLE) FD_SET(fd,&wfds);
+    if (mask & AE_EXCEPTION) FD_SET(fd,&efds);
+    if ((retval = select(fd+1, &rfds, &wfds, &efds, &tv)) > 0) {
+        if (FD_ISSET(fd,&rfds)) retmask |= AE_READABLE;
+        if (FD_ISSET(fd,&wfds)) retmask |= AE_WRITABLE;
+        if (FD_ISSET(fd,&efds)) retmask |= AE_EXCEPTION;
+        return retmask;
+    } else {
+        return retval;
+    }
 }
 
 void aeMain(aeEventLoop *eventLoop)

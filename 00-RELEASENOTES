@@ -1,0 +1,6 @@
+Redis 0.094 release notes
+-------------------------
+
+This release is a bugfix release that fixes the following issue:
+
+ * For a 32bit integer overflow bug there was a problem with datasets consisting of more than 20,000,000 keys resulting in a lot of CPU usage for iterated hash table resizing.
