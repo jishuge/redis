@@ -1,0 +1,17 @@
+K 25
+svn:wc:ra_dav:version-url
+V 44
+/svn/!svn/ver/139/trunk/client-libraries/php
+END
+tests.php
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/svn/!svn/ver/67/trunk/client-libraries/php/tests.php
+END
+redis.php
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/svn/!svn/ver/139/trunk/client-libraries/php/redis.php
+END

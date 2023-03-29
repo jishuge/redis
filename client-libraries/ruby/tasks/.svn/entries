@@ -1,0 +1,40 @@
+8
+
+dir
+190
+http://redis.googlecode.com/svn/trunk/client-libraries/ruby/tasks
+http://redis.googlecode.com/svn
+
+
+
+2009-03-18T12:52:30.499521Z
+185
+antirez
+
+
+svn:special svn:externals svn:needs-lock
+
+
+
+
+
+
+
+
+
+
+
+b5cb1b8a-01f7-11de-b556-9305e745af9e
+
+redis.tasks.rb
+file
+
+
+
+
+2009-03-18T13:19:32.000000Z
+0363dc046f2c11a0f5cc58761fe2a639
+2009-03-18T12:52:30.499521Z
+185
+antirez
+

@@ -1,0 +1,125 @@
+K 25
+svn:wc:ra_dav:version-url
+V 23
+/svn/!svn/ver/190/trunk
+END
+sds.h
+K 25
+svn:wc:ra_dav:version-url
+V 28
+/svn/!svn/ver/97/trunk/sds.h
+END
+redis.c
+K 25
+svn:wc:ra_dav:version-url
+V 31
+/svn/!svn/ver/189/trunk/redis.c
+END
+BETATESTING.txt
+K 25
+svn:wc:ra_dav:version-url
+V 39
+/svn/!svn/ver/189/trunk/BETATESTING.txt
+END
+redis.conf
+K 25
+svn:wc:ra_dav:version-url
+V 33
+/svn/!svn/ver/99/trunk/redis.conf
+END
+README
+K 25
+svn:wc:ra_dav:version-url
+V 30
+/svn/!svn/ver/149/trunk/README
+END
+BUGS
+K 25
+svn:wc:ra_dav:version-url
+V 27
+/svn/!svn/ver/35/trunk/BUGS
+END
+adlist.c
+K 25
+svn:wc:ra_dav:version-url
+V 32
+/svn/!svn/ver/131/trunk/adlist.c
+END
+test-redis.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 38
+/svn/!svn/ver/176/trunk/test-redis.tcl
+END
+dict.c
+K 25
+svn:wc:ra_dav:version-url
+V 29
+/svn/!svn/ver/97/trunk/dict.c
+END
+TODO
+K 25
+svn:wc:ra_dav:version-url
+V 28
+/svn/!svn/ver/190/trunk/TODO
+END
+adlist.h
+K 25
+svn:wc:ra_dav:version-url
+V 32
+/svn/!svn/ver/131/trunk/adlist.h
+END
+ae.c
+K 25
+svn:wc:ra_dav:version-url
+V 27
+/svn/!svn/ver/97/trunk/ae.c
+END
+anet.c
+K 25
+svn:wc:ra_dav:version-url
+V 29
+/svn/!svn/ver/97/trunk/anet.c
+END
+COPYING
+K 25
+svn:wc:ra_dav:version-url
+V 30
+/svn/!svn/ver/97/trunk/COPYING
+END
+dict.h
+K 25
+svn:wc:ra_dav:version-url
+V 29
+/svn/!svn/ver/97/trunk/dict.h
+END
+sds.c
+K 25
+svn:wc:ra_dav:version-url
+V 28
+/svn/!svn/ver/97/trunk/sds.c
+END
+ae.h
+K 25
+svn:wc:ra_dav:version-url
+V 27
+/svn/!svn/ver/97/trunk/ae.h
+END
+benchmark.c
+K 25
+svn:wc:ra_dav:version-url
+V 35
+/svn/!svn/ver/145/trunk/benchmark.c
+END
+Makefile
+K 25
+svn:wc:ra_dav:version-url
+V 32
+/svn/!svn/ver/180/trunk/Makefile
+END
+anet.h
+K 25
+svn:wc:ra_dav:version-url
+V 29
+/svn/!svn/ver/97/trunk/anet.h
+END

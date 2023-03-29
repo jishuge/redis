@@ -60,7 +60,7 @@ get_parser(Cmd)
     fun proto:single_stateful_parser/2;
 get_parser(Cmd)
     when Cmd =:= keys orelse Cmd =:= lrange orelse Cmd =:= sinter
-        orelse Cmd =:= smembers orelse Cmd =:= sort ->
+        orelse Cmd =:= smembers orelse Cmd =:= sort orelse Cmd =:= mget ->
     fun proto:stateful_parser/2.
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 

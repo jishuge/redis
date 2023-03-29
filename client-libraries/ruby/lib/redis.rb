@@ -72,6 +72,20 @@ class Redis
     }
   end
   
+  # MGET key1 key1 ... keyN
+  # Time complexity: 0(1) for each key
+  # Get the values of all the specified keys. If one or more keys dont exist or is not
+  # of type String, a 'nil' value is returned instead of the value of the specified key,
+  # but the operation never fails.
+  #
+  # Return value: mutli bulk reply
+  def mget(*keys)
+    timeout_retry(3, 3){
+      write "MGET #{keys.join(' ')}\r\n"
+      redis_unmarshal(multi_bulk_reply)
+    }
+  end
+
   # INCR key
   # INCRBY key value
   # Time complexity: O(1)
@@ -396,6 +410,36 @@ class Redis
     }
   end
   
+  # LREM key count value
+  # 
+  # Time complexity: O(N) (with N being the length of the list)
+  # 
+  # Remove the first count occurrences of the value element from the list. 
+  # If count is zero all the elements are removed. If count is negative 
+  # elements are removed from tail to head, instead to go from head to 
+  # tail that is the normal behaviour. So for example LREM with count -2 
+  # and hello as value to remove against the list (a,b,c,hello,x,hello,hello) 
+  # will lave the list (a,b,c,hello,x). The number of removed elements is 
+  # returned as an integer, see below for more information aboht the returned value.
+  # Return value
+  # 
+  # Integer Reply, specifically:
+  # 
+  # The number of removed elements if the operation succeeded
+  # -1 if the specified key does not exist
+  # -2 if the specified key does not hold a list value
+  def list_rm(key, count, value)
+    write "LREM #{key} #{count} #{value.to_s.size}\r\n#{value}\r\n"
+    case num = integer_reply
+    when -1
+      raise RedisError, "key: #{key} does not exist"
+    when -2
+      raise RedisError, "key: #{key} does not hold a list value"
+    else
+      num
+    end
+  end
+  
   # SADD key member
   # Time complexity O(1)
   # Add the specified member to the set value stored at key. If member is 
@@ -693,6 +737,47 @@ class Redis
     }
   end
   
+  # INFO
+  #
+  # The info command returns different information and statistics about the server
+  # in an format that's simple to parse by computers and easy to read by huamns. 
+  # The key used_memory is returned in bytes, and is the total number of bytes
+  # allocated by the program using malloc.  The key changes_since_last_save does
+  # not refer to the number of key changes, but to the number of operations that
+  # produced some kind of change in the dataset.
+  #
+  # Return value bulk reply
+  def info
+    info = {}
+  
+    x = timeout_retry(3, 3){
+      write "INFO\r\n"
+      bulk_reply
+    }
+  
+    x.each do |kv|
+      k,v = kv.split(':')[0], kv.split(':')[1]
+      info[k.to_sym] = v
+    end
+  
+    info
+  end
+  
+  def flush_db
+    timeout_retry(3, 3){
+      write "FLUSHDB\r\n"
+      status_code_reply
+    }
+  end
+  
+  
+  def last_save
+    timeout_retry(3, 3){
+      write "LASTSAVE\r\n"
+      single_line_reply.to_i
+    }
+  end
+  
   private
   
   def redis_unmarshal(obj)
@@ -724,8 +809,7 @@ class Redis
   end
   
   def socket
-    connect if (!@socket or @socket.closed?)
-    @socket
+    @socket ||= connect
   end
   
   def connect
@@ -764,15 +848,7 @@ class Redis
   end
   
   def read_proto
-    print "read proto: " if @opts[:debug]
-    buff = ""
-    while (char = read(1, false))
-      print char if @opts[:debug]
-      buff << char
-      break if buff[-2..-1] == CTRLF
-    end
-    puts if @opts[:debug]
-    buff[0..-3]
+    socket.gets.chomp
   end
   
   
@@ -788,13 +864,11 @@ class Redis
   def bulk_reply
     res = read_proto
     if res.index(ERRCODE) == 0
-      err = read(res.to_i.abs)
-      nibble_end
-      raise RedisError, err
+      err = read(res.to_i.abs+2)
+      raise RedisError, err.chomp
     elsif res != NIL
-      val = read(res.to_i.abs)
-      nibble_end
-      val
+      val = read(res.to_i.abs+2)
+      val.chomp
     else
       nil
     end
@@ -804,9 +878,8 @@ class Redis
   def multi_bulk_reply
     res = read_proto
     if res.index(ERRCODE) == 0
-      err = read(res.to_i.abs)
-      nibble_end
-      raise RedisError, err
+      err = read(res.to_i.abs+2)
+      raise RedisError, err.chomp
     elsif res == NIL
       nil  
     else
@@ -815,11 +888,11 @@ class Redis
       items.times do
         len = Integer(read_proto)
         if len == -1
-          nil
+          list << nil
         else
           list << read(len)
+          nibble_end
         end
-        nibble_end
       end  
       list
     end

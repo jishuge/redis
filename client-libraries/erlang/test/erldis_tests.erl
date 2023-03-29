@@ -26,11 +26,12 @@ pipeline_test() ->
     erldis:exists(Client, "hello"),
     erldis:exists(Client, "foo"),
     erldis:get(Client, "foo"),
+    erldis:mget(Client, ["hello", "foo"]),
     erldis:del(Client, "hello"),
     erldis:del(Client, "foo"),
     erldis:exists(Client, "hello"),
     erldis:exists(Client, "foo"),
-    [true, true, "bar", true, true, false, false] = erldis:get_all_results(Client),
+    [true, true, "bar", ["kitty!", "bar"], true, true, false, false] = erldis:get_all_results(Client),
     
     erldis:set(Client, "pippo", "pluto"),
     erldis:sadd(Client, "pippo", "paperino"),
