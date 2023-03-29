@@ -1,3 +1,17 @@
+Welcome to Redis 1.2.1
+
+Hello, 1.2.1 is a bugfix release, fixing a problem with RPOPLPUSH that was
+expecting a bulk command where an inline command is the perfectly fine (and
+the right one! in order to follow the same behaviour of all the other commands
+not sending a payload).
+
+There are no other changes.
+
+Happy hacking,
+antirez
+
+(Old release note for 1.2.0 follows)
+
 Welcome to Redis 1.2.0
 
 This is a rebranded 1.1.95-beta, also known as 1.2.0 release candidate 6
