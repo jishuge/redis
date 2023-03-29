@@ -27,7 +27,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#define REDIS_VERSION "1.2.1"
+#define REDIS_VERSION "1.2.2"
 
 #include "fmacros.h"
 #include "config.h"
@@ -786,10 +786,24 @@ static int dictEncObjKeyCompare(void *privdata, const void *key1,
 static unsigned int dictEncObjHash(const void *key) {
     robj *o = (robj*) key;
 
-    o = getDecodedObject(o);
-    unsigned int hash = dictGenHashFunction(o->ptr, sdslen((sds)o->ptr));
-    decrRefCount(o);
-    return hash;
+    if (o->encoding == REDIS_ENCODING_RAW) {
+        return dictGenHashFunction(o->ptr, sdslen((sds)o->ptr));
+    } else {
+        if (o->encoding == REDIS_ENCODING_INT) {
+            char buf[32];
+            int len;
+
+            len = snprintf(buf,32,"%ld",(long)o->ptr);
+            return dictGenHashFunction((unsigned char*)buf, len);
+        } else {
+            unsigned int hash;
+
+            o = getDecodedObject(o);
+            hash = dictGenHashFunction(o->ptr, sdslen((sds)o->ptr));
+            decrRefCount(o);
+            return hash;
+        }
+    }
 }
 
 static dictType setDictType = {
@@ -2514,9 +2528,18 @@ static int rdbSaveStringObjectRaw(FILE *fp, robj *obj) {
 static int rdbSaveStringObject(FILE *fp, robj *obj) {
     int retval;
 
-    obj = getDecodedObject(obj);
-    retval = rdbSaveStringObjectRaw(fp,obj);
-    decrRefCount(obj);
+    /* Avoid incr/decr ref count business when possible.
+     * This plays well with copy-on-write given that we are probably
+     * in a child process (BGSAVE). Also this makes sure key objects
+     * of swapped objects are not incRefCount-ed (an assert does not allow
+     * this in order to avoid bugs) */
+    if (obj->encoding != REDIS_ENCODING_RAW) {
+        obj = getDecodedObject(obj);
+        retval = rdbSaveStringObjectRaw(fp,obj);
+        decrRefCount(obj);
+    } else {
+        retval = rdbSaveStringObjectRaw(fp,obj);
+    }
     return retval;
 }
 
@@ -5099,6 +5122,27 @@ static void sortCommand(redisClient *c) {
     zfree(vector);
 }
 
+/* Convert an amount of bytes into a human readable string in the form
+ * of 100B, 2G, 100M, 4K, and so forth. */
+static void bytesToHuman(char *s, unsigned long long n) {
+    double d;
+
+    if (n < 1024) {
+        /* Bytes */
+        sprintf(s,"%lluB",n);
+        return;
+    } else if (n < (1024*1024)) {
+        d = (double)n/(1024);
+        sprintf(s,"%.2fK",d);
+    } else if (n < (1024LL*1024*1024)) {
+        d = (double)n/(1024*1024);
+        sprintf(s,"%.2fM",d);
+    } else if (n < (1024LL*1024*1024*1024)) {
+        d = (double)n/(1024LL*1024*1024);
+        sprintf(s,"%.2fG",d);
+    }
+}
+
 /* Create the string returned by the INFO command. This is decoupled
  * by the INFO command itself as we need to report the same information
  * on memory corruption problems. */
@@ -5106,7 +5150,9 @@ static sds genRedisInfoString(void) {
     sds info;
     time_t uptime = time(NULL)-server.stat_starttime;
     int j;
-    
+    char hmem[64];
+
+    bytesToHuman(hmem,zmalloc_used_memory());
     info = sdscatprintf(sdsempty(),
         "redis_version:%s\r\n"
         "arch_bits:%s\r\n"
@@ -5116,6 +5162,7 @@ static sds genRedisInfoString(void) {
         "connected_clients:%d\r\n"
         "connected_slaves:%d\r\n"
         "used_memory:%zu\r\n"
+        "used_memory_human:%s\r\n"
         "changes_since_last_save:%lld\r\n"
         "bgsave_in_progress:%d\r\n"
         "last_save_time:%ld\r\n"
@@ -5130,7 +5177,8 @@ static sds genRedisInfoString(void) {
         uptime/(3600*24),
         listLength(server.clients)-listLength(server.slaves),
         listLength(server.slaves),
-        server.usedmemory,
+        zmalloc_used_memory(),
+        hmem,
         server.dirty,
         server.bgsavechildpid != -1,
         server.lastsave,
@@ -5897,16 +5945,26 @@ fmterr:
 /* Write an object into a file in the bulk format $<count>\r\n<payload>\r\n */
 static int fwriteBulk(FILE *fp, robj *obj) {
     char buf[128];
-    obj = getDecodedObject(obj);
+    int decrrc = 0;
+
+    /* Avoid the incr/decr ref count business if possible to help
+     * copy-on-write (we are often in a child process when this function
+     * is called).
+     * Also makes sure that key objects don't get incrRefCount-ed when VM
+     * is enabled */
+    if (obj->encoding != REDIS_ENCODING_RAW) {
+        obj = getDecodedObject(obj);
+        decrrc = 1;
+    }
     snprintf(buf,sizeof(buf),"$%ld\r\n",(long)sdslen(obj->ptr));
     if (fwrite(buf,strlen(buf),1,fp) == 0) goto err;
     if (sdslen(obj->ptr) && fwrite(obj->ptr,sdslen(obj->ptr),1,fp) == 0)
         goto err;
     if (fwrite("\r\n",2,1,fp) == 0) goto err;
-    decrRefCount(obj);
+    if (decrrc) decrRefCount(obj);
     return 1;
 err:
-    decrRefCount(obj);
+    if (decrrc) decrRefCount(obj);
     return 0;
 }
 

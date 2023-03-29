@@ -1,4 +1,24 @@
-Welcome to Redis 1.2.1
+== Welcome to Redis 1.2.2 ==
+
+Hello, 1.2.2 is a bugfix release, fixing a problem with BGSAVE and BGREWRITEAOF
+copy-on-write semantics. This version of Redis will use a lot less CPU and
+memory while performing a BGSAVE and BGREWRITEAOF operation. 
+
+It is very important to upgrade ASAP to this version if you are using Redis
+with data persistence via snapshotting or append only file.
+
+Another minor change is that the INFO command will now have a new field showing
+memory usage in an human readable form. This was backported from Redis unstable
+as well.
+
+There are no other changes.
+
+Have a good time with Redis!
+antirez
+
+(Old release notes follow)
+
+== Welcome to Redis 1.2.1 ==
 
 Hello, 1.2.1 is a bugfix release, fixing a problem with RPOPLPUSH that was
 expecting a bulk command where an inline command is the perfectly fine (and
@@ -10,9 +30,7 @@ There are no other changes.
 Happy hacking,
 antirez
 
-(Old release note for 1.2.0 follows)
-
-Welcome to Redis 1.2.0
+== Welcome to Redis 1.2.0 ==
 
 This is a rebranded 1.1.95-beta, also known as 1.2.0 release candidate 6
 because no critical bug was found in the latest weeks.
