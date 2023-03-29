@@ -5,3 +5,5 @@ redis-server
 redis-benchmark
 doc-tools
 mkrelease.sh
+release
+myredis.conf
