@@ -3,4 +3,5 @@ Redis 0.095 release notes
 
 This release is a bugfix release that fixes the following issue:
 
+ * A memory leak when passing more than 16 arguments to a command (including itself). Note that Redis-HEAD in the Git repository allows for infinite number of arguments and will deprecate the 0.09x releases.
  * A memory leak when loading compressed objects from disk is now fixed. All users should upgrade ASAP.

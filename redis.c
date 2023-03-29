@@ -27,7 +27,7 @@
  * POSSIBILITY OF SUCH DAMAGE.
  */
 
-#define REDIS_VERSION "0.095"
+#define REDIS_VERSION "0.096"
 
 #include "fmacros.h"
 
@@ -1319,8 +1319,8 @@ again:
             argv = sdssplitlen(query,sdslen(query)," ",1,&argc);
             sdsfree(query);
             if (argv == NULL) oom("sdssplitlen");
-            for (j = 0; j < argc && j < REDIS_MAX_ARGS; j++) {
-                if (sdslen(argv[j])) {
+            for (j = 0; j < argc; j++) {
+                if (j < REDIS_MAX_ARGS && sdslen(argv[j])) {
                     c->argv[c->argc] = createObject(REDIS_STRING,argv[j]);
                     c->argc++;
                 } else {
