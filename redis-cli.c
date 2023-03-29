@@ -42,12 +42,15 @@
 
 #define REDIS_CMD_INLINE 1
 #define REDIS_CMD_BULK 2
+#define REDIS_CMD_MULTIBULK 4
 
 #define REDIS_NOTUSED(V) ((void) V)
 
 static struct config {
     char *hostip;
     int hostport;
+    long repeat;
+    int dbnum;
 } config;
 
 struct redisCommand {
@@ -74,12 +77,14 @@ static struct redisCommand cmdTable[] = {
     {"lrange",4,REDIS_CMD_INLINE},
     {"ltrim",4,REDIS_CMD_INLINE},
     {"lrem",4,REDIS_CMD_BULK},
+    {"rpoplpush",3,REDIS_CMD_BULK},
     {"sadd",3,REDIS_CMD_BULK},
     {"srem",3,REDIS_CMD_BULK},
     {"smove",4,REDIS_CMD_BULK},
     {"sismember",3,REDIS_CMD_BULK},
     {"scard",2,REDIS_CMD_INLINE},
     {"spop",2,REDIS_CMD_INLINE},
+    {"srandmember",2,REDIS_CMD_INLINE},
     {"sinter",-2,REDIS_CMD_INLINE},
     {"sinterstore",-3,REDIS_CMD_INLINE},
     {"sunion",-2,REDIS_CMD_INLINE},
@@ -87,6 +92,15 @@ static struct redisCommand cmdTable[] = {
     {"sdiff",-2,REDIS_CMD_INLINE},
     {"sdiffstore",-3,REDIS_CMD_INLINE},
     {"smembers",2,REDIS_CMD_INLINE},
+    {"zadd",4,REDIS_CMD_BULK},
+    {"zincrby",4,REDIS_CMD_BULK},
+    {"zrem",3,REDIS_CMD_BULK},
+    {"zremrangebyscore",4,REDIS_CMD_INLINE},
+    {"zrange",-4,REDIS_CMD_INLINE},
+    {"zrangebyscore",-4,REDIS_CMD_INLINE},
+    {"zrevrange",-4,REDIS_CMD_INLINE},
+    {"zcard",2,REDIS_CMD_INLINE},
+    {"zscore",3,REDIS_CMD_BULK},
     {"incrby",3,REDIS_CMD_INLINE},
     {"decrby",3,REDIS_CMD_INLINE},
     {"getset",3,REDIS_CMD_BULK},
@@ -101,6 +115,8 @@ static struct redisCommand cmdTable[] = {
     {"echo",2,REDIS_CMD_BULK},
     {"save",1,REDIS_CMD_INLINE},
     {"bgsave",1,REDIS_CMD_INLINE},
+    {"rewriteaof",1,REDIS_CMD_INLINE},
+    {"bgrewriteaof",1,REDIS_CMD_INLINE},
     {"shutdown",1,REDIS_CMD_INLINE},
     {"lastsave",1,REDIS_CMD_INLINE},
     {"type",2,REDIS_CMD_INLINE},
@@ -110,9 +126,12 @@ static struct redisCommand cmdTable[] = {
     {"info",1,REDIS_CMD_INLINE},
     {"mget",-2,REDIS_CMD_INLINE},
     {"expire",3,REDIS_CMD_INLINE},
+    {"expireat",3,REDIS_CMD_INLINE},
     {"ttl",2,REDIS_CMD_INLINE},
     {"slaveof",3,REDIS_CMD_INLINE},
     {"debug",-2,REDIS_CMD_INLINE},
+    {"mset",-3,REDIS_CMD_MULTIBULK},
+    {"msetnx",-3,REDIS_CMD_MULTIBULK},
     {NULL,0,0}
 };
 
@@ -160,11 +179,12 @@ static sds cliReadLine(int fd) {
     return sdstrim(line,"\r\n");
 }
 
-static int cliReadSingleLineReply(int fd) {
+static int cliReadSingleLineReply(int fd, int quiet) {
     sds reply = cliReadLine(fd);
 
     if (reply == NULL) return 1;
-    printf("%s\n", reply);
+    if (!quiet)
+        printf("%s\n", reply);
     return 0;
 }
 
@@ -177,7 +197,7 @@ static int cliReadBulkReply(int fd) {
     bulklen = atoi(replylen);
     if (bulklen == -1) {
         sdsfree(replylen);
-        printf("(nil)");
+        printf("(nil)\n");
         return 0;
     }
     reply = zmalloc(bulklen);
@@ -222,11 +242,13 @@ static int cliReadReply(int fd) {
     switch(type) {
     case '-':
         printf("(error) ");
-        cliReadSingleLineReply(fd);
+        cliReadSingleLineReply(fd,0);
         return 1;
     case '+':
+        return cliReadSingleLineReply(fd,0);
     case ':':
-        return cliReadSingleLineReply(fd);
+        printf("(integer) ");
+        return cliReadSingleLineReply(fd,0);
     case '$':
         return cliReadBulkReply(fd);
     case '*':
@@ -237,10 +259,32 @@ static int cliReadReply(int fd) {
     }
 }
 
+static int selectDb(int fd)
+{
+    int retval;
+    sds cmd;
+    char type;
+
+    if (config.dbnum == 0)
+        return 0;
+
+    cmd = sdsempty();
+    cmd = sdscatprintf(cmd,"SELECT %d\r\n",config.dbnum);
+    anetWrite(fd,cmd,sdslen(cmd));
+    anetRead(fd,&type,1);
+    if (type <= 0 || type != '+') return 1;
+    retval = cliReadSingleLineReply(fd,1);
+    if (retval) {
+        close(fd);
+	return retval;
+    }
+    return 0;
+}
+
 static int cliSendCommand(int argc, char **argv) {
     struct redisCommand *rc = lookupCommand(argv[0]);
     int fd, j, retval = 0;
-    sds cmd = sdsempty();
+    sds cmd;
 
     if (!rc) {
         fprintf(stderr,"Unknown command '%s'\n",argv[0]);
@@ -254,25 +298,47 @@ static int cliSendCommand(int argc, char **argv) {
     }
     if ((fd = cliConnect()) == -1) return 1;
 
-    /* Build the command to send */
-    for (j = 0; j < argc; j++) {
-        if (j != 0) cmd = sdscat(cmd," ");
-        if (j == argc-1 && rc->flags & REDIS_CMD_BULK) {
-            cmd = sdscatprintf(cmd,"%d",sdslen(argv[j]));
-        } else {
-            cmd = sdscatlen(cmd,argv[j],sdslen(argv[j]));
-        }
-    }
-    cmd = sdscat(cmd,"\r\n");
-    if (rc->flags & REDIS_CMD_BULK) {
-        cmd = sdscatlen(cmd,argv[argc-1],sdslen(argv[argc-1]));
-        cmd = sdscat(cmd,"\r\n");
-    }
-    anetWrite(fd,cmd,sdslen(cmd));
-    retval = cliReadReply(fd);
+    /* Select db number */
+    retval = selectDb(fd);
     if (retval) {
-        close(fd);
-        return retval;
+        fprintf(stderr,"Error setting DB num\n");
+        return 1;
+    }
+ 
+    while(config.repeat--) {
+        /* Build the command to send */
+        cmd = sdsempty();
+        if (rc->flags & REDIS_CMD_MULTIBULK) {
+            cmd = sdscatprintf(cmd,"*%d\r\n",argc);
+            for (j = 0; j < argc; j++) {
+                cmd = sdscatprintf(cmd,"$%lu\r\n",
+                    (unsigned long)sdslen(argv[j]));
+                cmd = sdscatlen(cmd,argv[j],sdslen(argv[j]));
+                cmd = sdscatlen(cmd,"\r\n",2);
+            }
+        } else {
+            for (j = 0; j < argc; j++) {
+                if (j != 0) cmd = sdscat(cmd," ");
+                if (j == argc-1 && rc->flags & REDIS_CMD_BULK) {
+                    cmd = sdscatprintf(cmd,"%lu",
+                        (unsigned long)sdslen(argv[j]));
+                } else {
+                    cmd = sdscatlen(cmd,argv[j],sdslen(argv[j]));
+                }
+            }
+            cmd = sdscat(cmd,"\r\n");
+            if (rc->flags & REDIS_CMD_BULK) {
+                cmd = sdscatlen(cmd,argv[argc-1],sdslen(argv[argc-1]));
+                cmd = sdscatlen(cmd,"\r\n",2);
+            }
+        }
+        anetWrite(fd,cmd,sdslen(cmd));
+        sdsfree(cmd);
+        retval = cliReadReply(fd);
+        if (retval) {
+            close(fd);
+            return retval;
+        }
     }
     close(fd);
     return 0;
@@ -294,6 +360,12 @@ static int parseOptions(int argc, char **argv) {
             i++;
         } else if (!strcmp(argv[i],"-p") && !lastarg) {
             config.hostport = atoi(argv[i+1]);
+            i++;
+        } else if (!strcmp(argv[i],"-r") && !lastarg) {
+            config.repeat = strtoll(argv[i+1],NULL,10);
+            i++;
+        } else if (!strcmp(argv[i],"-n") && !lastarg) {
+            config.dbnum = atoi(argv[i+1]);
             i++;
         } else {
             break;
@@ -326,6 +398,8 @@ int main(int argc, char **argv) {
 
     config.hostip = "127.0.0.1";
     config.hostport = 6379;
+    config.repeat = 1;
+    config.dbnum = 0;
 
     firstarg = parseOptions(argc,argv);
     argc -= firstarg;
@@ -337,11 +411,12 @@ int main(int argc, char **argv) {
         argvcopy[j] = sdsnew(argv[j]);
 
     if (argc < 1) {
-        fprintf(stderr, "usage: redis-cli [-h host] [-p port] cmd arg1 arg2 arg3 ... argN\n");
-        fprintf(stderr, "usage: echo \"argN\" | redis-cli [-h host] [-p port] cmd arg1 arg2 ... arg(N-1)\n");
+        fprintf(stderr, "usage: redis-cli [-h host] [-p port] [-r repeat_times] [-n db_num] cmd arg1 arg2 arg3 ... argN\n");
+        fprintf(stderr, "usage: echo \"argN\" | redis-cli [-h host] [-p port] [-r repeat_times] [-n db_num] cmd arg1 arg2 ... arg(N-1)\n");
         fprintf(stderr, "\nIf a pipe from standard input is detected this data is used as last argument.\n\n");
         fprintf(stderr, "example: cat /etc/passwd | redis-cli set my_passwd\n");
         fprintf(stderr, "example: redis-cli get my_passwd\n");
+        fprintf(stderr, "example: redis-cli -r 100 lpush mylist x\n");
         exit(1);
     }
 

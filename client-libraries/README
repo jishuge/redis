@@ -1,38 +1,11 @@
-Redis client libraries
-----------------------
+An updated list of client libraries for Redis can be found here:
 
-In this directory you'll find client libraries for different languages.
-This are the latest releases available at the time this Redis tar.gz for this
-release was created, and are good for most uses, but if you need more fresh
-code or recent bugfixes read more.
+    http://code.google.com/p/redis
 
-How to get the lastest versions of client libraries source code
----------------------------------------------------------------
+All the links are in the front page.
 
-Note that while the pure PHP, Tcl, Python and Ruby_2 (Ruby alternative lib)
-libraries are the most uptodate available libraries, all the other libraries
-have their own repositories where it's possible to grab the most recent version:
+Most mainstream (and less mainstream) languages are supported.
 
-Ruby lib source code:
-http://github.com/ezmobius/redis-rb/tree/master
-git://github.com/ezmobius/redis-rb.git
-
-Erlang lib source code:
-http://bitbucket.org/adroll/erldis/
-
-Perl lib source code:
-(web) http://svn.rot13.org/index.cgi/Redis
-(svn) svn://svn.rot13.org/Redis/
-
-Redis-php PHP C module:
-http://code.google.com/p/phpredis/
-
-Lua lib source code:
-http://github.com/nrk/redis-lua/tree/master
-git://github.com/nrk/redis-lua.git
-
-Clojure lib source code:
-http://github.com/ragnard/redis-clojure/
-git://github.com/ragnard/redis-clojure.git
-
-For all the rest check the Redis tarball or Git repository.
+If you plan to write a new client library for a missing language, please
+get in touch with the other developers writing a message to the Redis google
+group that is located here: http://groups.google.com/group/redis-db

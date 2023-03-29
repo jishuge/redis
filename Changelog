@@ -1,3 +1,189 @@
+2009-12-16 Fixed a lame epoll issue
+2009-12-15 html doc updated
+2009-12-15 version is now 1.1.92
+2009-12-15 Two important fixes to append only file: zero length values and expires. A pretty neat new test to check consistency of randomly build datasets against snapshotting and AOF.
+2009-12-15 debug loadaof implemented in order to add more consistency tests in test-redis.tcl
+2009-12-15 Added a new test able to stress a lot the snapshotting engine
+2009-12-15 Unified handling of empty queries with normal queries.
+2009-12-15 Fixed some subtle bug in the command processing code almost impossible to spot in the real world, thanks to gcov
+2009-12-15 Regression test for SINTERSTORE added
+2009-12-15 Fixed issue #121
+2009-12-14 a few more tests and ability to run a specific test in test-redis.tcl
+2009-12-13 Changed the reply of BGSAVE and BGREWRITEAOF from +OK to a more meaningful message that makes the user aware of an operation that just started and is not yet finished.
+2009-12-13 Set the master->slave logical client as authenticated on creation, so that if the slave requires a password replication works anyway
+2009-12-13 TODO update
+2009-12-12 bgrewriteaof_in_progress added to INFO
+2009-12-12 TODO list modified. What's planned for 1.4 is now written in the stone ;)
+2009-12-12 better handling of non blocking connect on redis-benchmark: EPIPE on read does not print an error message now
+2009-12-11 some change to redis-sha1.rb utility to make it more robust against non-meaningful changes in the dataset
+2009-12-10 redis-sha1.rb utility updated
+2009-12-10 a bit more verbose -ERR wrong number o arguments error, now gives info about the command name causing the error
+2009-12-10 TODO change and minor SETNX optimization
+2009-12-06 in rdbLoadDoubleValue now the buffer is nul terminated correctly. Thanks valgrind.
+2009-12-06 printf format warnings fixed by casting
+2009-12-06 Regression tests for SETNX and MSETNX bugs added
+2009-12-06 SETNX and MSETNX now respect the delete-on-write operation of EXPIREing keys
+2009-12-06 Fixed daemonization when using kqueue/kevent. Now the server initialization is performed *after* the daemonization
+2009-12-05 more HTML doc changes
+2009-12-05 HTML doc update
+2009-12-05 a few redis-cli format specified fixed
+2009-12-05 use __attribute__ format in sdscatprintf() when the compiler is GCC. Fixed format bugs resulting from the new warnings.
+2009-12-01 TODO update
+2009-12-01 compilation problem on 64bit mac os x 10.5 possibly fixed
+2009-12-01 virtual memory design doc typos
+2009-12-01 design documents added to the project
+2009-11-30 Fixed issued #85 (getDecodedObject: Assertion 1 != 1 failed. While sorting a set), added a smarter assert() function to dump the stacktrace, provided a macro to initalize Redis objects on the stack to avoid this kind of bugs.
+2009-11-30 fixed a subtle bug in redis-cli not having visible effects
+2009-11-29 TODO updated
+2009-11-29 Version chagned to 1.100, also known as the first first 2.0 beta version
+2009-11-29 more tests in test-redis.tcl, some minor fix
+2009-11-29 SORT support for sorted sets
+2009-11-28 Implemented LIMIT option in ZRANGEBYSCORE. We now enter feature-freeze
+2009-11-28 Changelog updated
+2009-11-28 html doc updated
+2009-11-28 enable kqueue/kevent only for Mac OS X 10.6.x as it seems that 10.5.x has a broken implementation of this syscalls.
+2009-11-28 TODO updated
+2009-11-28 ZRANGEBYSCORE fuzzy test
+2009-11-28 ZRANGEBYSCORE memory leak fixed, ZRANGEBYSCORE initial test added
+2009-11-28 INFO refactored. Stack trace on memory corruption now dumps the same information as the INFO command
+2009-11-28 ifdefs added to use kevent on Free Open and Net BSD as well. INFO and ae.c modified in order to report the multiplexing API in use
+2009-11-28 Enabled object encoding for multiple keys in MSET. Added a test for memory leaks in test-redis.tcl when running on Mac OS X
+2009-11-28 Merge branch 'kqueue' of git://github.com/mallipeddi/redis
+2009-11-28 Changes to TODO list, commented a function in redis.c
+2009-11-28 Added support for kqueue.
+2009-11-27 TODO updated
+2009-11-26 zero length bulk data reading fixed in loadAppendOnlyFile()
+2009-11-26 append only file fixes
+2009-11-26 log rebuilding, random refactoring, work in progress please wait for an OK commit before to use this version
+2009-11-24 DEBUG RELOAD implemented, and test-redis.tcl modified to use it to check for persistence consistency.
+2009-11-24 Redis version set to 1.07
+2009-11-24 sorted sets saving fixed
+2009-11-24 minor TODO change
+2009-11-24 minor fix to avoid a false valgrind warning.
+2009-11-23 epoll support enabled by default for Linux builds
+2009-11-23 epoll module for ae.c implemented. Some more testing needed
+2009-11-23 commented the HAVE_EPOLL test in config.h to allow compilation under Linux now that the epoll module is still missing
+2009-11-23 ae_select module added
+2009-11-23 ae.c now supports multiple polling API modules, even if only ae_select.c is implemented currently. Also adding and removing an event is now O(1).
+2009-11-23 ae.c initial refactoring for epoll implementation
+2009-11-21 version incremented up to 1.06
+2009-11-21 TODO aesthetic changes
+2009-11-21 TODO updated with plans up to 1.5
+2009-11-21 SRANDMEMBER test
+2009-11-21 Fixed a SORT memory leak that should never happen in practice
+2009-11-21 SORT GET # implemented, with a test
+2009-11-21 EXPIREAT test
+2009-11-20 EXPIRE tests
+2009-11-20 more RPOPLPUSH tests
+2009-11-20 RPOPLPUSH tests added
+2009-11-20 ZINCRBY return value fixed
+2009-11-20 ZINCRSCOREBY => ZINCRBY
+2009-11-19 ZINCRSCOREBY implemented
+2009-11-19 writev() finally uncommented again
+2009-11-19 redis-benchmark hopefully last bug with multi bulk reply fixed
+2009-11-19 debug mode in redis-bench
+2009-11-19 Use writev(2) if glue output buffers is disabled
+2009-11-19 benchmark.c fixes
+2009-11-18 more experiments with long replies, glue output buffer, and writev.
+2009-11-18 benchmarking with different number of LRANGE elements. Ability to change the glue output buffer limit by #define
+2009-11-18 more writev tests/work
+2009-11-18 redis-benchmark multi bulk reply support hopefully fixed
+2009-11-17 support for writev implemented but currently ifdef-ed in order to understan why I can't see the improvements expected. Btw code provided by Stefano Barbato
+2009-11-17 multi-bulk reply support for redis-bench, and as a result LRANGE is not tested, providing some number for the tuning of multi-bulk requests performances server-side
+2009-11-12 Solaris fix thanks to Alan Harder
+2009-11-12 Merge git://github.com/ianxm/redis
+2009-11-12 ZSCORE fixed, now returns NULL on missing key or missing element
+2009-11-12 Redis test will not fail the SAVE test even if a background save is in progress
+2009-11-12 LPOPPUSH renamed into RPOPLPUSH
+2009-11-11 can select db num
+2009-11-11 Workaround for test-redis.tcl and Tcl 8.4.x about ZSCORE test
+2009-11-11 Removed a long time warning compiling with recent GCC on Linux
+2009-11-11 TODO updated
+2009-11-11 LPUSHPOP first implementation
+2009-11-10 Tcl script, make target, and redis.c changes to build the static symbol table automagically
+2009-11-10 Implemented a much better lazy expiring algorithm for EXPIRE
+2009-11-10 Fixed issue 92 in redis: redis-cli (nil) return value lacks CR/LF
+2009-11-10 Minor TODO change with new expiring algorithm description. New expiring algorithm moved since it'll go in 1.1
+2009-11-04 redis-test is now a better Redis citizen, testing everything against DB 9 and 10 and only if this DBs are empty.
+2009-11-04 fixed a refcounting bug with SORT ... STORE leading to random crashes
+2009-11-04 masterauth option merged, thanks to Anthony Lauzon
+2009-11-03 ZSets double to string serialization fixed
+2009-11-03 client-libraries directory readded
+2009-11-03 redis.tcl put at toplevel since it's uesd for the test-redis.tcl script
+2009-11-03 client libs removed from Redis git
+2009-11-03 redis-cli now accepts a -r (repeat) switch. Still there is a memory leaks to fix
+2009-11-01 TODO updated again
+2009-11-01 TODO updated
+2009-11-01 redis-cli now makes clear when the returned string is an integer
+2009-11-01 SORT STORE option
+2009-11-01 now Redis prints DB stats just after the startup without to wait a second for the first report
+2009-11-01 another fix for append only mode, now read-only operations are not appended
+2009-11-01 appendfsync parsing in config file fixed. If you benchmarked Redis against different appendfsync options is time to try again ;)
+2009-11-01 append only file loading fixed
+2009-11-01 first version of append only file loading -- STILL BROKEN don't use it
+2009-10-31 Fixed Issue 83:Using TYPE on a zset results in a malformed response from the Redis server
+2009-10-31 Fixed compilation on Linux
+2009-10-30 append only mode is now able to translate EXPIRE into EXPIREAT transparently
+2009-10-30 appendfsync is now set to NO by default
+2009-10-30 support for appendonly mode no, always, everysec
+2009-10-30 first fix for append only mode
+2009-10-30 Initial implementation of append-only mode. Loading still not implemented.
+2009-10-30 EXPIRE behaviour changed a bit, a negative TTL or an EXPIREAT with unix time in the past will now delete the key. It seems saner to me than doing nothing.
+2009-10-30 EXPIREAT implemented, will be useful for the append-only mode
+2009-10-29 Fixed Issue 74 (ERR just returned on invalid password), now the error message is -ERR invalid password.
+2009-10-29 Fixed issue 72 (SLAVEOF shutdowns redis-server on malformed reply)
+2009-10-29 Fixed issue 77 (Incorrect time in log files) thanks to youwantalex
+2009-10-29 Fixed  Issue 76 (redis-server crashes when it can't connect to MASTER and client connects to SLAVE)
+2009-10-29 ZREMRANGEBYSCORE implemented. Remove a range of elements with score between min and max
+2009-10-28 TODO changes and mostly theoretical minor skiplist change
+2009-10-28 ZLEN renamed ZCARD for consistency with SCARD
+2009-10-27 TODO reworked to reflect the real roadmap
+2009-10-27 Fix for 'make 32bit'
+2009-10-27 a fix for the solaris fix itself ;)
+2009-10-27 More Solaris fixes
+2009-10-27 A lot of ZSETs tests implemented, and a bug fixed thanks to this new tests
+2009-10-27 zmalloc Solaris fixes thanks to Alan Harder
+2009-10-27 ZSCORE implemented
+2009-10-26 fix for ZRANGEBYSCORE
+2009-10-26 ZRANGEBYSCORE implemented. Redis got range queries!
+2009-10-26 A trivial change makes the new implementation O(log(N)) instead of O(log(N))+O(M) when there are M repeated scores!
+2009-10-26 ZSET now saved on disk like any other type
+2009-10-26 double serialization routines implemented
+2009-10-26 ZSETs random fixes. Now the implementation appears to be pretty stable
+2009-10-26 another leak fixed. Can't find more for now, but still a bug in ZSETs to fix
+2009-10-26 ZSETs memory leak #1 solved, another one missing
+2009-10-26 Fix for skiplists backward link
+2009-10-26 Merged Solaris patches provided by Alan Harder
+2009-10-26 backward support to skiplists for ZREVRANGE, still broken, committing since I've to merge the Solaris patches
+2009-10-26 TODO updated
+2009-10-26 ZREM implemented
+2009-10-24 fix for ZADD in score update mode
+2009-10-24 some work on ZADD against existing element (score update), still broken...
+2009-10-23 zrange now starts to work. zadd still does not support update and will crash or leak or b000mmmmm
+2009-10-23 zrange initial hack (not working for now)
+2009-10-23 first skiplist fix, courtesy of valgrind
+2009-10-23 zset symbols added to stack trace code. ZSets will simply crash at the moment
+2009-10-23 more work on ZSETs and a new make target called 32bit to build i386 binaries on mac os x leopard
+2009-10-23 initial skiplist implementation. Most memory checks removed and zmalloc() modified to fail with an error message and abort. Anyway Redis is not designed to recover from out of memory conditions.
+2009-10-23 Fixed compilation in mac os x snow leopard when compiling a 32 bit binary.
+2009-10-22 version incremented to 1.050 to distinguish from 1.001 stable and next stable versions with minor fixes
+2009-10-21 TODO updated
+2009-10-21 SRANDMEMBER added
+2009-10-20 Imporant bug leading to data corruption fixed (NOT affecting stable distribution), Tcl client lib MSET/MSETNX implementation fixed, Added new tests for MSET and MSETNX in test-redis.tcl
+2009-10-17 added multi-bulk protocol support to redis-cli and support for MSET and MSETNX
+2009-10-17 MSET fixed, was not able to replace keys already set for a stupid bug
+2009-10-16 some dead code removed
+2009-10-16 multi bulk input protocol fixed
+2009-10-16 MSET and MSETNX commands implemented
+2009-10-07 undoed all the sds hacking that lead just to random bugs and no memory saving ;)
+2009-10-07 initial multi-bulk query protocol, this will allow MSET and other interesting features.
+2009-10-03 benchmark now outputs the right command line to shorten the TIME_WAIT interval on Mac OS X when keep alive is set
+2009-10-02 Issue 69 fixed. Object integer encoding now works with replication and MONITORing again.
+2009-09-18 LREM fixed, used to crash since the new object integer encoding is on the stage
+2009-09-17 maxmemory didn't worked in 64 systems for values > 4GB since it used to be an unsigned int. Fixed
+2009-09-10 incremented version number to 1.001, AKA Redis edge is no longer stable...
+2009-09-10 in-memory specialized object encoding (for now 32 signed integers only)
+2009-09-03 Latest doc changes for 1.0
 2009-09-03 Redis 1.0.0 release
 2009-09-02 Redis version pushed to 1.0
 2009-09-02 Ruby client lib updated to the latest git version

@@ -1,15 +1,39 @@
-Welcome to Redis 1.000
+Welcome to Redis 1.1.95
 
-This is the first stable release of Redis. It's mostly 0.900 with some bug fixed and the addition of the Scala bindings (other clinet libs updated as well).
+This is the 1.1.95-beta, also known as 1.2.0 release candidate 6.
 
-CHANGELOG for Redis 1.000
+This is a minor bugfix release compared to 1.1.94 (a minor GETSET bug was fixed)
+Unless major bugs are found, this is the latest release candidate.
 
-2009-09-02 QuickStart added (antirez)
-2009-09-01 Fixed crash with only space and newline as command (issue 61), thanks to a guy having as nick "fixxxerrr" (fixxxerrr)
-2009-07-24 more snow leopard related fixes (for 32bit systems) (antirez)
-2009-07-24 fixed compilation with Snow Leopard, thanks to Lon Baker for providing SSH access to Snow Leopard box (antirez, thanks to Lon Baker)
-2009-07-22 Fixed NetBSD compile problems (antirez, kr0aky)
-2009-07-17 now the size of the shared pool can be really modified via config, also the number of objects in the sharing pool is logged when the log level is set to debug. Thanks to Aman Gupta (Aman Gupta)
-2009-07-05 added utils/redis-copy.rb, a script that is able to copy data from one Redis server to another one on the fly. (antirez)
-2009-07-04 Applied three different patches thanks to Chris Lamb, one to fix compilation and get the IP register value on Linux IA64 and other systems. One in order to log the overcommit problem on the logs instead of the standard output when Redis is demonized. The latest in order to suggest a more consistent way in order to switch to 1 the memory overcommit Linux feature. (Chris Lamb)
-2009-07-03 bugfix: EXPIRE now propagates to the Slave. (antirez)
+1.2.0-stable will be relased in the first weeks of 2010 and will hopefully be
+an unmodified 1.1.95 with version changed to 1.2.0.
+
+WHAT'S NEW IN 1.1.x - 1.2.x:
+
+2009-09-10 in-memory specialized object encoding. (antirez)
+2009-09-17 maxmemory fixed in 64 systems for values > 4GB. (antirez)
+2009-10-07 multi-bulk protocol implemented. (antriez)
+2009-10-16 MSET and MSETNX commands implemented (antirez)
+2009-10-21 SRANDMEMBER added (antirez)
+2009-10-23 Fixed compilation in mac os x snow leopard when compiling a 32 bit binary. (antirez)
+2009-10-23 New data type: Sorted sets and Z-commands (antirez)
+2009-10-26 Solaris fixed (Alan Harder)
+2009-10-29 Fixed Issue a number of open issues (antirez)
+2009-10-30 New persistence mode: append only file (antirez)
+2009-11-01 SORT STORE option (antirez)
+2009-11-03 redis-cli now accepts a -r (repeat) switch. (antirez)
+2009-11-04 masterauth option merged (Anthony Lauzon)
+2009-11-04 redis-test is now a better Redis citizen, testing everything against DB 9 and 10 and only if this DBs are empty. (antirez)
+2009-11-10 Implemented a much better lazy expiring algorithm for EXPIRE (antirez)
+2009-11-11 RPUSHLPOP (antirez from an idea of @ezmobius)
+2009-11-12 Merge git://github.com/ianxm/redis (Can't remmber what this implements, sorry)
+2009-11-17 multi-bulk reply support for redis-bench, LRANGE speed tests (antirez)
+2009-11-17 support for writev implemented. (Stefano Barbato)
+2009-11-19 debug mode (-D) in redis-bench (antirez)
+2009-11-21 SORT GET # implemented (antirez)
+2009-11-23 ae.c made modular, with support for epoll. (antirez)
+2009-11-26 background append log rebuilding (antirez)
+2009-11-28 Added support for kqueue. (Harish Mallipeddi)
+2009-11-29 SORT support for sorted sets (antirez, thanks to @tobi for the idea)
+
+
